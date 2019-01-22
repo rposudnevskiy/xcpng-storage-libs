@@ -79,9 +79,9 @@ class Qemudisk(object):
         qemu_params = '%s:%s:%s' % (self.vdi_uuid, ROOT_NODE_NAME, self.qmp_sock)
 
         self.params = "hack|%s|%s" % (self.params, qemu_params)
-        self._set_open_args_()
+        self._set_open_args_(dbg)
 
-    def _set_open_args_(self):
+    def _set_open_args_(self, dbg):
 
         self.open_args = {'driver': self.vdi_type,
                           'cache': {'direct': True, 'no-flush': True},
