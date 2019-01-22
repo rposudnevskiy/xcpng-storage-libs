@@ -76,6 +76,7 @@ class Volume(object):
         image_meta = {
             KEY_TAG: vdi_uuid,
             UUID_TAG: vdi_uuid,
+            TYPE_TAG: get_vdi_type_by_uri(dbg, vdi_uri),
             NAME_TAG: name,
             PATH_TAG: "%s/%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, vdi_uri), vdi_uuid),
             DESCRIPTION_TAG: description,
@@ -87,7 +88,11 @@ class Volume(object):
             CUSTOM_KEYS_TAG: {}
         }
 
-        return self._create(dbg, sr, name, description, size, sharable, image_meta)
+        image_meta = self._create(dbg, sr, name, description, size, sharable, image_meta)
+
+        self.MetadataHandler.update(dbg, vdi_uri, image_meta)
+
+        return image_meta
 
     def _set(self, dbg, sr, key, k, v, image_meta):
         # Override in Volume specifc class
@@ -225,19 +230,17 @@ class Volume(object):
 
 class RAWVolume(Volume):
 
+    def _get_full_vol_size(self, dbg, size):
+        return self.VolOpsHendler.roundup_size(dbg, size)
+
     def _create(self, dbg, sr, name, description, size, sharable, image_meta):
         log.debug("%s: xcpng.RAWVolume.create: SR: %s Name: %s Description: %s Size: %s"
                   % (dbg, sr, name, description, size))
 
-        image_meta[TYPE_TAG] = get_vdi_type_by_uri(dbg, image_meta[URI_TAG][0])
-
-        zvol_size = self.VolOpsHendler.roundup_size(dbg, size)
-
         uri = image_meta[URI_TAG][0]
 
         try:
-            self.VolOpsHendler.create(dbg, uri, zvol_size, image_meta[PATH_TAG])
-            self.MetadataHandler.update(dbg, uri, image_meta)
+            self.VolOpsHendler.create(dbg, uri, self._get_full_vol_size(dbg, size), image_meta[PATH_TAG])
         except Exception:
             try:
                 self.VolOpsHendler.destroy(dbg, uri, image_meta[PATH_TAG])
@@ -254,38 +257,25 @@ class RAWVolume(Volume):
 
         uri = image_meta[URI_TAG][0]
 
-        new_zvol_size = self.VolOpsHendler.roundup_size(dbg, new_size)
-
         try:
-            self.VolOpsHendler.resize(dbg, uri, new_zvol_size)
+            self.VolOpsHendler.resize(dbg, uri, self._get_full_vol_size(dbg, new_size))
         except Exception:
             raise Volume_does_not_exist(key)
 
 
-class QCOW2Volume(Volume):
+class QCOW2Volume(RAWVolume):
+
+    def _get_full_vol_size(self, dbg, size):
+        # TODO: Implement overhead calculation for QCOW2 format
+        return self.VolOpsHendler.roundup_size(dbg, fullSizeVHD(validate_and_round_vhd_size(size)))
 
     def _create(self, dbg, sr, name, description, size, sharable, image_meta):
         log.debug("%s: xcpng.QCOW2Volume._create: SR: %s Name: %s Description: %s Size: %s"
                   % (dbg, sr, name, description, size))
 
-        image_meta[TYPE_TAG] = get_vdi_type_by_uri(dbg, image_meta[URI_TAG][0])
+        super(QCOW2Volume, self)._create(dbg, sr, name, description, size, sharable, image_meta)
 
         uri = image_meta[URI_TAG][0]
-
-        # TODO: Implement overhead calculation for QCOW2 format
-        size = validate_and_round_vhd_size(size)
-        zvol_size = self.VolOpsHendler.roundup_size(dbg, fullSizeVHD(size))
-
-        try:
-            self.VolOpsHendler.create(dbg, uri, zvol_size, image_meta[PATH_TAG])
-            self.MetadataHandler.update(dbg, uri, image_meta)
-        except Exception:
-            try:
-                self.VolOpsHendler.destroy(dbg, uri, image_meta[PATH_TAG])
-            except Exception:
-                pass
-            finally:
-                raise Volume_does_not_exist(image_meta[UUID_TAG])
 
         self.VolOpsHendler.map(dbg, uri, image_meta[PATH_TAG])
 
@@ -304,16 +294,9 @@ class QCOW2Volume(Volume):
         log.debug("%s: xcpng.QCOW2Volume._resize: SR: %s Key: %s New_size: %s"
                   % (dbg, sr, key, new_size))
 
+        super(RAWVolume, self)._resize(dbg, sr, key, new_size, image_meta)
+
         uri = image_meta[URI_TAG][0]
-
-        # TODO: Implement overhead calculation for QCOW2 format
-        new_size = validate_and_round_vhd_size(new_size)
-        new_zvol_size = self.VolOpsHendler.roundup_size(dbg, fullSizeVHD(new_size))
-
-        try:
-            self.VolOpsHendler.resize(dbg, uri, new_zvol_size)
-        except Exception:
-            raise Volume_does_not_exist(key)
 
         self.VolOpsHendler.map(dbg, uri, image_meta[PATH_TAG])
 
