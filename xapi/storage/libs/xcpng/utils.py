@@ -43,7 +43,7 @@ def get_sr_uuid_by_uri(dbg, uri):
     return urlparse.urlparse(uri).netloc
 
 def get_sr_uuid_by_name(dbg, name):
-    regex = re.compile("ZFS%s" % POOL_PREFIX)
+    regex = re.compile(".*%s" % POOL_PREFIX)
     return regex.sub('', name)
 
 def get_vdi_uuid_by_uri(dbg, uri):
