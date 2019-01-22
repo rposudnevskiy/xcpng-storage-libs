@@ -34,14 +34,14 @@ class SROperations(object):
     def destroy(self, dbg, uri):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
-    def get_sr_list(self, dbg):
+    def get_sr_list(self, dbg, configuration):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
     def get_vdi_list(self, dbg, uri):
         # zvol.startswith(utils.VDI_PREFIXES[utils.get_vdi_type_by_uri(dbg, uri)]):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
-    def sr_import(self, dbg, uri):
+    def sr_import(self, dbg, uri, configuration):
         # Override in VolumeOperations specifc class if required
         pass
 
@@ -66,7 +66,6 @@ class SROperations(object):
         return []
 
     def get_free_space(self, dbg, uri):
-        # int(zfs_utils.pool_get(dbg, pool, 'free'))
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
     def get_size(self, dbg, uri):
@@ -102,14 +101,14 @@ class SR(object):
         log.debug("%s: xcpng.sr.SR.probe: Available Pools" % dbg)
         log.debug("%s: xcpng.sr.SR.probe: ---------------------------------------------------" % dbg)
 
-        srs = self.SROpsHendler.get_sr_list(dbg)
+        srs = self.SROpsHendler.get_sr_list(dbg, configuration)
 
         for sr_name in srs:
             log.debug("%s: xcpng.sr.SR.probe: %s" % (dbg, sr_name))
 
             sr_uuid = get_sr_uuid_by_name(dbg, sr_name)
 
-            self.SROpsHendler.sr_import(dbg, "%s%s" % (_uri_, sr_uuid))
+            self.SROpsHendler.sr_import(dbg, "%s%s" % (_uri_, sr_uuid), configuration)
             sr_meta = self.MetadataHandler.load(dbg, "%s%s" % (_uri_, sr_uuid))
 
             if (IMAGE_FORMAT_TAG in configuration and
@@ -118,7 +117,7 @@ class SR(object):
                   configuration[IMAGE_FORMAT_TAG] != sr_meta[CONFIGURATION_TAG][IMAGE_FORMAT_TAG]) or
                  (CONFIGURATION_TAG in sr_meta and
                   IMAGE_FORMAT_TAG not in sr_meta[CONFIGURATION_TAG]) or
-                  CONFIGURATION_TAG not in sr_meta)):
+                 CONFIGURATION_TAG not in sr_meta)):
                 sr_name = None
 
             if (DATAPATH_TAG in configuration and
@@ -127,7 +126,7 @@ class SR(object):
                   configuration[DATAPATH_TAG] != sr_meta[CONFIGURATION_TAG][DATAPATH_TAG]) or
                  (CONFIGURATION_TAG in sr_meta and
                   DATAPATH_TAG not in sr_meta[CONFIGURATION_TAG]) or
-                  CONFIGURATION_TAG not in sr_meta)):
+                 CONFIGURATION_TAG not in sr_meta)):
                 sr_name = None
 
             if (SR_UUID_TAG in configuration and
@@ -136,9 +135,15 @@ class SR(object):
                   configuration[SR_UUID_TAG] != sr_meta[CONFIGURATION_TAG][SR_UUID_TAG]) or
                  (CONFIGURATION_TAG in sr_meta and
                   SR_UUID_TAG not in sr_meta[CONFIGURATION_TAG] and
-                  configuration[SR_UUID_TAG] != sr_uuid) or
+                  SR_UUID_TAG in sr_meta and
+                  configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
                  (CONFIGURATION_TAG not in sr_meta and
-                  configuration[SR_UUID_TAG] != sr_uuid))):
+                  SR_UUID_TAG in sr_meta and
+                  configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
+                 SR_UUID_TAG not in sr_meta)):
+                sr_name = None
+
+            if SR_UUID_TAG not in sr_meta:
                 sr_name = None
 
             if sr_name is not None:
@@ -149,7 +154,7 @@ class SR(object):
                 _result_['extra_info'] = {}
 
                 sr = {}
-                sr['sr'] = "%s%s" % (_uri_, sr_uuid)
+                sr['sr'] = "%s%s" % (_uri_, sr_meta[SR_UUID_TAG])
                 sr['name'] = sr_meta[NAME_TAG] if NAME_TAG in sr_meta \
                                                else self.SROpsHendler.DEFAULT_SR_NAME
                 sr['description'] = sr_meta[DESCRIPTION_TAG] if DESCRIPTION_TAG in sr_meta \
@@ -161,7 +166,7 @@ class SR(object):
                 sr['health'] = self.SROpsHendler.get_health(dbg, "%s%s" % (_uri_, sr_uuid))
 
                 _result_['sr'] = sr
-                _result_['configuration']['sr_uuid'] = sr_uuid
+                _result_['configuration']['sr_uuid'] = sr_meta[SR_UUID_TAG]
 
                 result.append(_result_)
 
@@ -194,6 +199,7 @@ class SR(object):
             self.MetadataHandler.create(dbg, uri)
         except Exception:
             try:
+                self.SROpsHendler.sr_export(dbg, uri)
                 self.SROpsHendler.destroy(dbg, uri)
             except Exception:
                 raise Exception
@@ -227,7 +233,7 @@ class SR(object):
         try:
             self.SROpsHendler.destroy(dbg, uri)
         except Exception:
-            log.debug("%s: xcpng.sr.SR.create: Failed to destroy SR - sr_uuid: %s" % (dbg, sr_uuid))
+            log.debug("%s: xcpng.sr.SR.destroy: Failed to destroy SR - sr_uuid: %s" % (dbg, sr_uuid))
             raise Exception
 
     def attach(self, dbg, configuration):
@@ -249,7 +255,7 @@ class SR(object):
         log.debug("%s: xcpng.sr.SR.attach: uri %s sr_uuid: %s" % (dbg, uri, sr_uuid))
 
         try:
-            self.SROpsHendler.sr_import(dbg, uri)
+            self.SROpsHendler.sr_import(dbg, uri, configuration)
         except Exception:
             log.debug("%s: xcpng.sr.SR.attach: Failed to attach SR - sr_uuid: %s" % (dbg, sr_uuid))
             raise Sr_not_attached(configuration['sr_uuid'])
