@@ -65,6 +65,10 @@ class MetadataHandler(object):
         raise NotImplementedError('Override in MetadataHandler specifc class')
 
     @staticmethod
+    def _destroy(dbg, uri):
+        raise NotImplementedError('Override in MetadataHandler specifc class')
+
+    @staticmethod
     def _remove(dbg, uri):
         raise NotImplementedError('Override in MetadataHandler specifc class')
 
@@ -82,6 +86,13 @@ class MetadataHandler(object):
                   % (dbg, uri))
 
         return cls._create(dbg, uri)
+
+    @classmethod
+    def destroy(cls, dbg, uri):
+        log.debug("%s: meta.MetadataHandler.create: uri: %s "
+                  % (dbg, uri))
+
+        return cls._destroy(dbg, uri)
 
     @classmethod
     def remove(cls, dbg, uri):
