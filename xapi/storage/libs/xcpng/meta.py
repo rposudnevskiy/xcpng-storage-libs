@@ -10,6 +10,7 @@ TYPE_TAG = 'vdi_type'
 KEY_TAG = 'key'
 NAME_TAG = 'name'
 PATH_TAG = 'path'
+QEMU_URI_TAG = 'qemu_uri'
 DESCRIPTION_TAG = 'description'
 CONFIGURATION_TAG = 'configuration'
 READ_WRITE_TAG = 'read_write'
@@ -37,6 +38,7 @@ TAG_TYPES = {
     KEY_TAG: str,
     NAME_TAG: str,
     PATH_TAG: str,
+    QEMU_URI_TAG: str,
     DESCRIPTION_TAG: str,
     CONFIGURATION_TAG: eval,  # dict
     READ_WRITE_TAG: eval,  # boolean

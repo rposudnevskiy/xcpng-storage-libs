@@ -1,20 +1,19 @@
 #!/usr/bin/env python
 
 import os
-
 import sys
-
 import uuid
+from copy import deepcopy
+from subprocess import call
 
-from subprocess import call, Popen, PIPE, check_output
-
-from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_sr_uuid_by_uri, get_vdi_type_by_uri, \
-                                          validate_and_round_vhd_size, fullSizeVHD
+from xapi.storage.libs.xcpng.utils import get_vdi_type_by_uri, get_vdi_datapath_by_uri, \
+                                          validate_and_round_vhd_size, fullSizeVHD, get_current_host_uuid
 from xapi.storage.libs.xcpng.meta import KEY_TAG, UUID_TAG, NAME_TAG, PATH_TAG, DESCRIPTION_TAG, READ_WRITE_TAG, \
                                          VIRTUAL_SIZE_TAG, PHYSICAL_UTILISATION_TAG, URI_TAG, SHARABLE_TAG, \
-                                         CUSTOM_KEYS_TAG, TYPE_TAG
+                                         CUSTOM_KEYS_TAG, TYPE_TAG, SNAPSHOT_OF_TAG, ACTIVE_ON_TAG, \
+                                         QEMU_PID_TAG, QEMU_NBD_SOCK_TAG, QEMU_QMP_SOCK_TAG, QEMU_QMP_LOG_TAG
 from xapi.storage.libs.xcpng.meta import MetadataHandler
-
+from xapi.storage.libs.xcpng.datapath import DATAPATHES
 from xapi.storage import log
 
 import platform
@@ -22,9 +21,11 @@ import platform
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import Volume_does_not_exist
     from xapi.storage.api.v4.volume import Volume_skeleton
+    from xapi.storage.api.v4.volume import Activated_on_another_host
 elif platform.linux_distribution()[1] == '7.6.0':
     from xapi.storage.api.v5.volume import Volume_does_not_exist
     from xapi.storage.api.v5.volume import Volume_skeleton
+    from xapi.storage.api.v5.volume import Activated_on_another_host
 
 
 class VolumeOperations(object):
@@ -32,19 +33,16 @@ class VolumeOperations(object):
     def __init__(self):
         pass
 
-    def create(self, dbg, uri, size, path):
+    def create(self, dbg, uri, size):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
-    def destroy(self, dbg, uri, path):
+    def destroy(self, dbg, uri):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
     def resize(self, dbg, uri, size):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
-    def map(self, dbg, uri, path):
-        raise NotImplementedError('Override in VolumeOperations specifc class')
-
-    def unmap(self, dbg, uri, path):
+    def swap(self, dbg, uri1, uri2):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
     def get_phisical_utilization(self, dbg, uri):
@@ -57,8 +55,9 @@ class VolumeOperations(object):
 class Volume(object):
 
     def __init__(self):
-        self.MetadataHandler = MetadataHandler
+        self.MetadataHandler = MetadataHandler()
         self.VolOpsHendler = VolumeOperations()
+        self.Datapathes = DATAPATHES
 
     def _create(self, dbg, sr, name, description, size, sharable, image_meta):
         # Override in Volume specifc class
@@ -78,7 +77,6 @@ class Volume(object):
             UUID_TAG: vdi_uuid,
             TYPE_TAG: get_vdi_type_by_uri(dbg, vdi_uri),
             NAME_TAG: name,
-            PATH_TAG: "%s/%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, vdi_uri), vdi_uuid),
             DESCRIPTION_TAG: description,
             READ_WRITE_TAG: True,
             VIRTUAL_SIZE_TAG: vsize,
@@ -162,7 +160,7 @@ class Volume(object):
         try:
             image_meta = self.MetadataHandler.load(dbg, uri)
             self._destroy(dbg, sr, key, image_meta)
-            self.VolOpsHendler.destroy(dbg, uri, image_meta[PATH_TAG])
+            self.VolOpsHendler.destroy(dbg, uri)
             self.MetadataHandler.remove(dbg, uri)
         except Exception:
             raise Volume_does_not_exist(key)
@@ -227,6 +225,39 @@ class Volume(object):
         except Exception:
             raise Volume_does_not_exist(key)
 
+    def _clone(self, dbg, sr, key, mode, base_meta):
+        raise NotImplementedError('Override in Volume specifc class')
+
+    def clone(self, dbg, sr, key, mode):
+        log.debug("%s: xcpng.Volume.clone: SR: %s Key: %s Mode: %s"
+                  % (dbg, sr, key, mode))
+
+        orig_uri = "%s/%s" % (sr, key)
+
+        try:
+            orig_meta = self.MetadataHandler.load(dbg, orig_uri)
+        except Exception:
+            raise Volume_does_not_exist(key)
+
+        if SNAPSHOT_OF_TAG in orig_meta:
+            base_uri = "%s/%s" % (sr, orig_meta[SNAPSHOT_OF_TAG])
+            try:
+                base_meta = self.MetadataHandler.load(dbg, base_uri)
+            except Exception:
+                raise Volume_does_not_exist(key)
+        else:
+            base_meta = deepcopy(orig_meta)
+
+        if ACTIVE_ON_TAG in base_meta:
+            current_host = get_current_host_uuid()
+            if base_meta[ACTIVE_ON_TAG] != current_host:
+                log.debug("%s: librbd.Volume.clone: SR: %s Key: %s Can not snapshot on %s as VDI already active on %s"
+                          % (dbg, sr, base_meta[UUID_TAG],
+                             current_host, base_meta[ACTIVE_ON_TAG]))
+                raise Activated_on_another_host(base_meta[ACTIVE_ON_TAG])
+
+        return self._clone(dbg, sr, key, mode, base_meta)
+
 
 class RAWVolume(Volume):
 
@@ -240,10 +271,10 @@ class RAWVolume(Volume):
         uri = image_meta[URI_TAG][0]
 
         try:
-            self.VolOpsHendler.create(dbg, uri, self._get_full_vol_size(dbg, size), image_meta[PATH_TAG])
+            self.VolOpsHendler.create(dbg, uri, self._get_full_vol_size(dbg, size))
         except Exception:
             try:
-                self.VolOpsHendler.destroy(dbg, uri, image_meta[PATH_TAG])
+                self.VolOpsHendler.destroy(dbg, uri)
             except Exception:
                 pass
             finally:
@@ -269,6 +300,124 @@ class QCOW2Volume(RAWVolume):
         # TODO: Implement overhead calculation for QCOW2 format
         return self.VolOpsHendler.roundup_size(dbg, fullSizeVHD(validate_and_round_vhd_size(size)))
 
+    def _clone(self, dbg, sr, key, mode, base_meta):
+        log.debug("%s: xcpng.QCOW2Volume._clone: SR: %s Key: %s Mode: %s"
+                  % (dbg, sr, key, mode))
+
+        datapath = get_vdi_datapath_by_uri(dbg, sr)
+        devnull = open(os.devnull, 'wb')
+
+        try:
+            if base_meta[KEY_TAG] == key:
+                # create clone
+                clone_meta = self.create(dbg,
+                                         sr,
+                                         base_meta[NAME_TAG],
+                                         base_meta[DESCRIPTION_TAG],
+                                         base_meta[VIRTUAL_SIZE_TAG],
+                                         base_meta[SHARABLE_TAG])
+
+                # create new base
+                new_base_meta = self.create(dbg,
+                                            sr,
+                                            base_meta[NAME_TAG],
+                                            base_meta[DESCRIPTION_TAG],
+                                            base_meta[VIRTUAL_SIZE_TAG],
+                                            base_meta[SHARABLE_TAG])
+
+                # swap base and new base
+                self.VolOpsHendler.swap(dbg, base_meta[URI_TAG], new_base_meta[URI_TAG])
+
+                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG])
+                self.Datapathes[datapath].map_vol(dbg, base_meta[URI_TAG])
+
+                call(["/usr/lib64/qemu-dp/bin/qemu-img",
+                      "rebase",
+                      "-u",
+                      "-f", base_meta[TYPE_TAG],
+                      "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG]),
+                      self.Datapathes[datapath].gen_vol_path(dbg, base_meta[URI_TAG])],
+                      stdout=devnull, stderr=devnull)
+
+                call(["/usr/lib64/qemu-dp/bin/qemu-img",
+                      "rebase",
+                      "-u",
+                      "-f", clone_meta[TYPE_TAG],
+                      "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG]),
+                      self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG])],
+                      stdout=devnull, stderr=devnull)
+
+                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG])
+                self.Datapathes[datapath].unmap_vol(dbg, base_meta[URI_TAG])
+
+                new_base_uuid = new_base_meta[UUID_TAG]
+                new_base_meta = deepcopy(base_meta)
+                new_base_meta[NAME_TAG] = "(base) %s" % new_base_meta[NAME_TAG]
+                new_base_meta[KEY_TAG] = new_base_uuid
+                new_base_meta[UUID_TAG] = new_base_uuid
+                new_base_meta[URI_TAG] = ["%s/%s" % (sr, new_base_uuid)]
+                new_base_meta[READ_WRITE_TAG] = False
+
+                if ACTIVE_ON_TAG in new_base_meta:
+                    self.Datapathes[datapath].snapshot(dbg, new_base_meta[URI_TAG][0], base_meta[URI_TAG][0], 0)
+
+                if ACTIVE_ON_TAG in new_base_meta:
+                    new_base_meta[ACTIVE_ON_TAG] = None
+                    new_base_meta[QEMU_PID_TAG] = None
+                    new_base_meta[QEMU_NBD_SOCK_TAG] = None
+                    new_base_meta[QEMU_QMP_SOCK_TAG] = None
+                    new_base_meta[QEMU_QMP_LOG_TAG] = None
+
+                self.MetadataHandler.update(dbg, new_base_meta[URI_TAG][0], new_base_meta)
+                self.MetadataHandler.update(dbg, base_meta[URI_TAG][0], base_meta)
+
+            else:
+                # create clone
+                clone_meta = self.create(dbg,
+                                         sr,
+                                         base_meta[NAME_TAG],
+                                         base_meta[DESCRIPTION_TAG],
+                                         base_meta[VIRTUAL_SIZE_TAG],
+                                         base_meta[SHARABLE_TAG])
+
+                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG])
+
+                call(["/usr/lib64/qemu-dp/bin/qemu-img",
+                      "rebase",
+                      "-f", base_meta[TYPE_TAG],
+                      "-b", self.Datapathes[datapath].gen_vol_uri(dbg, base_meta[URI_TAG]), # TODO: Fix it to datapath like rbd://cluster/pool/image. For ZFSSR it is the same as path
+                      self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG])],
+                      stdout = devnull, stderr = devnull)
+
+                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG])
+
+            clone_uuid = clone_meta[UUID_TAG]
+            clone_meta = deepcopy(base_meta)
+            clone_meta[KEY_TAG] = clone_uuid
+            clone_meta[UUID_TAG] = clone_uuid
+            clone_meta[URI_TAG] = ["%s/%s" % (sr, clone_uuid)]
+
+            if ACTIVE_ON_TAG in clone_meta:
+                clone_meta.pop(ACTIVE_ON_TAG, None)
+                clone_meta.pop(QEMU_PID_TAG, None)
+                clone_meta.pop(QEMU_NBD_SOCK_TAG, None)
+                clone_meta.pop(QEMU_QMP_SOCK_TAG, None)
+                clone_meta.pop(QEMU_QMP_LOG_TAG, None)
+
+            if mode is 'snapshot':
+                clone_meta[READ_WRITE_TAG] = False
+                clone_meta[SNAPSHOT_OF_TAG] = new_base_meta[UUID_TAG]
+            elif mode is 'clone':
+                clone_meta[READ_WRITE_TAG] = True
+
+            self.MetadataHandler.update(dbg, clone_meta[URI_TAG][0], clone_meta)
+
+            return clone_meta
+        except Exception:
+            raise Volume_does_not_exist(key)
+        finally:
+            devnull.close()
+
     def _create(self, dbg, sr, name, description, size, sharable, image_meta):
         log.debug("%s: xcpng.QCOW2Volume._create: SR: %s Name: %s Description: %s Size: %s"
                   % (dbg, sr, name, description, size))
@@ -276,17 +425,20 @@ class QCOW2Volume(RAWVolume):
         super(QCOW2Volume, self)._create(dbg, sr, name, description, size, sharable, image_meta)
 
         uri = image_meta[URI_TAG][0]
+        datapath = get_vdi_datapath_by_uri(dbg, uri)
 
-        self.VolOpsHendler.map(dbg, uri, image_meta[PATH_TAG])
+        self.Datapathes[datapath].map_vol(dbg, uri)
 
         devnull = open(os.devnull, 'wb')
         call(["/usr/lib64/qemu-dp/bin/qemu-img",
               "create",
               "-f", image_meta[TYPE_TAG],
-              image_meta[PATH_TAG],
-              str(size)], stdout=devnull, stderr=devnull)
+              self.Datapathes[datapath].gen_vol_uri(dbg, uri),
+              str(size)],
+              stdout=devnull, stderr=devnull)
+        devnull.close()
 
-        self.VolOpsHendler.unmap(dbg, uri, image_meta[PATH_TAG])
+        self.Datapathes[datapath].unmap_vol(dbg, uri)
 
         return image_meta
 
@@ -297,109 +449,91 @@ class QCOW2Volume(RAWVolume):
         super(RAWVolume, self)._resize(dbg, sr, key, new_size, image_meta)
 
         uri = image_meta[URI_TAG][0]
+        datapath = get_vdi_datapath_by_uri(dbg, uri)
 
-        self.VolOpsHendler.map(dbg, uri, image_meta[PATH_TAG])
+        self.Datapathes[datapath].map_vol(dbg, uri)
 
         devnull = open(os.devnull, 'wb')
         call(["/usr/lib64/qemu-dp/bin/qemu-img",
               "resize",
-              image_meta[PATH_TAG],
-              str(new_size)], stdout=devnull, stderr=devnull)
+              self.Datapathes[datapath].gen_vol_uri(dbg, uri),
+              str(new_size)],
+              stdout=devnull, stderr=devnull)
+        devnull.close()
 
-        self.VolOpsHendler.unmap(dbg, uri, image_meta[PATH_TAG])
+        self.Datapathes[datapath].unmap_vol(dbg, uri)
+
+
+VOLUME_TYPES = {'raw': RAWVolume, 'qcow2': QCOW2Volume}
 
 
 class Implementation(Volume_skeleton):
 
-    def __init__(self):
+    def __init__(self, vol_types):
         super(Implementation, self).__init__()
-        self.RAWVolume = RAWVolume()
-        self.QCOW2Volume = QCOW2Volume()
+        self.VolumeTypes = vol_types
 
     def create(self, dbg, sr, name, description, size, sharable):
         log.debug("%s: Volume.%s: SR: %s Name: %s Description: %s Size: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, name, description, size))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.create(dbg, sr, name, description, size, sharable)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.create(dbg, sr, name, description, size, sharable)
 
-#    def clone(self, dbg, sr, key, mode='clone'):
-#        log.debug("%s: Volume.%s: SR: %s Key: %s"
-#                  % (dbg, sys._getframe().f_code.co_name, sr, key))
-#        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-#            return self.RAWVolume.clone(dbg, sr, key, mode)
-#        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-#            return self.QCOW2Volume.clone(dbg, sr, key, mode)
+        return self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().create(dbg, sr, name, description, size, sharable)
+
+    def clone(self, dbg, sr, key, mode='clone'):
+        log.debug("%s: Volume.%s: SR: %s Key: %s"
+                  % (dbg, sys._getframe().f_code.co_name, sr, key))
+
+        return self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().clone(dbg, sr, key, mode)
 
     def snapshot(self, dbg, sr, key):
+
         return self.clone(dbg, sr, key, mode='snapshot')
 
     def destroy(self, dbg, sr, key):
         log.debug("%s: Volume.%s: SR: %s Key: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, key))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.destroy(dbg, sr, key)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.destroy(dbg, sr, key)
+
+        self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().destroy(dbg, sr, key)
 
     def set_name(self, dbg, sr, key, new_name):
         log.debug("%s: Volume.%s: SR: %s Key: %s New_name: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, key, new_name))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.set_name(dbg, sr, key, new_name)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.set_name(dbg, sr, key, new_name)
+
+        self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().set_name(dbg, sr, key, new_name)
 
     def set_description(self, dbg, sr, key, new_description):
         log.debug("%s: Volume.%s: SR: %s Key: %s New_description: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, key, new_description))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.set_description(dbg, sr, key, new_description)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.set_description(dbg, sr, key, new_description)
+
+        self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().set_description(dbg, sr, key, new_description)
 
     def set(self, dbg, sr, key, k, v):
         log.debug("%s: Volume.%s: SR: %s Key: %s Custom_key: %s Value: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, key, k, v))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.set(dbg, sr, key, k, v)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.set(dbg, sr, key, k, v)
+
+        self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().set(dbg, sr, key, k, v)
 
     def unset(self, dbg, sr, key, k):
         log.debug("%s: Volume.%s: SR: %s Key: %s Custom_key: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, key, k))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.unset(dbg, sr, key, k)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.unset(dbg, sr, key, k)
+
+        self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().unset(dbg, sr, key, k)
 
     def resize(self, dbg, sr, key, new_size):
         log.debug("%s: Volume.%s: SR: %s Key: %s New_size: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, key, new_size))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.resize(dbg, sr, key, new_size)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.resize(dbg, sr, key, new_size)
+
+        self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().resize(dbg, sr, key, new_size)
 
     def stat(self, dbg, sr, key):
         log.debug("%s: Volume.%s: SR: %s Key: %s"
                   % (dbg, sys._getframe().f_code.co_name, sr, key))
-        if get_vdi_type_by_uri(dbg, sr) == 'raw':
-            return self.RAWVolume.stat(dbg, sr, key)
-        elif get_vdi_type_by_uri(dbg, sr) == 'qcow2':
-            return self.QCOW2Volume.stat(dbg, sr, key)
 
-#   def compare(self, dbg, sr, key, key2):
+        return self.VolumeTypes[get_vdi_type_by_uri(dbg, sr)]().stat(dbg, sr, key)
+
+#    def compare(self, dbg, sr, key, key2):
 
 #    def similar_content(self, dbg, sr, key):
-#        log.debug("%s: Volume.%s: SR: %s Key: %s"
-#                  % (dbg, sys._getframe().f_code.co_name, sr, key))
-#
-#        result = {}
-#
-#        return result
 
 #    def enable_cbt(self, dbg, sr, key):
 
@@ -407,4 +541,4 @@ class Implementation(Volume_skeleton):
 
 #    def data_destroy(self, dbg, sr, key):
 
-#   def list_changed_blocks(self, dbg, sr, key, key2, offset, length):
+#    def list_changed_blocks(self, dbg, sr, key, key2, offset, length):

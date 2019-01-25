@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+from os.path import exists
+from subprocess import call
+
 from xapi.storage import log
 
 from xapi.storage.libs.xcpng.meta import MetadataHandler
@@ -7,7 +10,8 @@ from xapi.storage.libs.xcpng.meta import NON_PERSISTENT_TAG, ACTIVE_ON_TAG, UUID
                                          QEMU_NBD_SOCK_TAG, QEMU_QMP_LOG_TAG
 from xapi.storage.libs.xcpng.qemudisk import introduce, create, Qemudisk, ROOT_NODE_NAME
 
-from xapi.storage.libs.xcpng.utils import get_current_host_uuid, get_sr_uuid_by_uri, get_vdi_type_by_uri
+from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_current_host_uuid, get_sr_uuid_by_uri, \
+                                          get_vdi_type_by_uri, get_vdi_uuid_by_uri, get_vdi_datapath_by_uri
 
 import platform
 if platform.linux_distribution()[1] == '7.5.0':
@@ -15,11 +19,26 @@ if platform.linux_distribution()[1] == '7.5.0':
 elif platform.linux_distribution()[1] == '7.6.0':
     from xapi.storage.api.v5.datapath import Datapath_skeleton
 
-
 class Datapath(object):
 
     def __init__(self):
         self.MetadataHandler = MetadataHandler
+        self.blkdev = None
+
+    def gen_vol_path(self, dbg, uri):
+        return "%s/%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri), get_vdi_uuid_by_uri(dbg, uri))
+
+    def gen_vol_uri(self, dbg, uri):
+        return self.gen_vol_path(dbg, uri)
+
+    def map_vol(self, dbg, uri):
+        if self.blkdev:
+            call(['ln', '-s', self.blkdev, self.gen_vol_path(dbg, uri)])
+
+    def unmap_vol(self, dbg, uri):
+        path = self.gen_vol_path(dbg, uri)
+        if exists(path):
+            call(['unlink', path])
 
     def _open(self, dbg, uri, domain):
         raise NotImplementedError('Override in Datapath specifc class')
@@ -117,6 +136,7 @@ class Datapath(object):
 
         # TODO: Check that VDI is not active on other host
 
+        self.map_vol(dbg, uri)
         self._activate(dbg, uri, domain)
 
         image_meta = {
@@ -133,6 +153,7 @@ class Datapath(object):
                   % (dbg, uri, domain))
 
         self._deactivate(dbg, uri, domain)
+        self.unmap_vol(dbg, uri)
 
         image_meta = {
             ACTIVE_ON_TAG: None
@@ -295,34 +316,43 @@ class QdiskDatapath(Datapath):
         qemu_dp.snap(dbg, snap_uri)
 
 
+DATAPATHES = {'qdisk': QdiskDatapath()}
+
+
 class Implementation(Datapath_skeleton):
     """
     Datapath implementation
     """
-    def __init__(self):
+    def __init__(self, datapathes):
         super(Implementation, self).__init__()
-        self.Datapath = QdiskDatapath()
+        self.Datapathes = datapathes
 
     def open(self, dbg, uri, persistent):
         log.debug("%s: Datapath.open: uri: %s persistent: %s" % (dbg, uri, persistent))
-        return self.Datapath.open(dbg, uri, persistent)
+
+        self.Datapathes[get_vdi_datapath_by_uri(dbg, uri)].open(dbg, uri, persistent)
 
     def close(self, dbg, uri):
         log.debug("%s: Datapath.close: uri: %s" % (dbg, uri))
-        return self.Datapath.close(dbg, uri)
+
+        self.Datapathes[get_vdi_datapath_by_uri(dbg, uri)].close(dbg, uri)
 
     def attach(self, dbg, uri, domain):
         log.debug("%s: Datapath.attach: uri: %s domain: %s" % (dbg, uri, domain))
-        return self.Datapath.attach(dbg, uri, domain)
+
+        return self.Datapathes[get_vdi_datapath_by_uri(dbg, uri)].attach(dbg, uri, domain)
 
     def detach(self, dbg, uri, domain):
         log.debug("%s: Datapath.detach: uri: %s domain: %s" % (dbg, uri, domain))
-        return self.Datapath.detach(dbg, uri, domain)
+
+        self.Datapathes[get_vdi_datapath_by_uri(dbg, uri)].detach(dbg, uri, domain)
 
     def activate(self, dbg, uri, domain):
         log.debug("%s: Datapath.activate: uri: %s domain: %s" % (dbg, uri, domain))
-        return self.Datapath.activate(dbg, uri, domain)
+
+        self.Datapathes[get_vdi_datapath_by_uri(dbg, uri)].activate(dbg, uri, domain)
 
     def deactivate(self, dbg, uri, domain):
         log.debug("%s: Datapath.deactivate: uri: %s domain: %s" % (dbg, uri, domain))
-        return self.Datapath.deactivate(dbg, uri, domain)
+
+        self.Datapathes[get_vdi_datapath_by_uri(dbg, uri)].deactivate(dbg, uri, domain)

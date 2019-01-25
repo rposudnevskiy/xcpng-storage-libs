@@ -30,7 +30,7 @@ def subst_vdi_type_in_uri(dbg, uri, type):
     result = regex.match(uri)
     return "%s+%s+%s" % (result.group(1), type, result.group(3))
 
-def get_datapath_by_uri(dbg, uri):
+def get_vdi_datapath_by_uri(dbg, uri):
     scheme = urlparse.urlparse(uri).scheme
     regex = re.compile('(.*)\+(.*)\+(.*)')
     result = regex.match(scheme)

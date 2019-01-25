@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 import json
-from copy import deepcopy
 import platform
+from copy import deepcopy
+from subprocess import call
 
 from xapi.storage import log
 
@@ -10,7 +11,7 @@ from xapi.storage.libs.xcpng.meta import IMAGE_FORMAT_TAG, SR_UUID_TAG, CONFIGUR
                                          DATAPATH_TAG, UUID_TAG, KEY_TAG, READ_WRITE_TAG, VIRTUAL_SIZE_TAG, \
                                          PHYSICAL_UTILISATION_TAG, URI_TAG, CUSTOM_KEYS_TAG, SHARABLE_TAG, \
                                          MetadataHandler
-from xapi.storage.libs.xcpng.utils import get_sr_uuid_by_name, get_sr_uuid_by_uri, get_vdi_uuid_by_name
+from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_sr_uuid_by_name, get_sr_uuid_by_uri, get_vdi_uuid_by_name
 
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import SR_skeleton
@@ -77,7 +78,7 @@ class SR(object):
     def __init__(self):
         self.sr_type = ''
         # self.sr_name_prefix = ''
-        self.MetadataHandler = MetadataHandler
+        self.MetadataHandler = MetadataHandler()
         self.SROpsHendler = SROperations()
 
     def probe(self, dbg, configuration):
@@ -254,6 +255,9 @@ class SR(object):
 
         log.debug("%s: xcpng.sr.SR.attach: uri %s sr_uuid: %s" % (dbg, uri, sr_uuid))
 
+        configuration['mountpoint'] = "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))
+        call(['mkdir', '-p', configuration['mountpoint']])
+
         try:
             self.SROpsHendler.sr_import(dbg, uri, configuration)
         except Exception:
@@ -272,6 +276,9 @@ class SR(object):
         except Exception:
             log.debug("%s: xcpng.sr.SR.detach: Failed to detach SR - sr_uuid: %s" % (dbg, sr_uuid))
             raise Exception
+
+        call(['rm', '-rf', "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))])
+
 
     def stat(self, dbg, uri):
         log.debug("%s: xcpng.sr.SR.stat: uri: %s" % (dbg, uri))
@@ -363,9 +370,9 @@ class SR(object):
 
 class Implementation(SR_skeleton):
 
-    def __init__(self):
+    def __init__(self, sr):
         super(Implementation, self).__init__()
-        self.SR = SR()
+        self.SR = sr()
 
     def probe(self, dbg, configuration):
         log.debug("%s: xcpng.sr.Implementation.probe: configuration=%s" % (dbg, configuration))
