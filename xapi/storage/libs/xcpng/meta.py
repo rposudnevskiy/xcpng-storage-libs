@@ -26,9 +26,12 @@ QEMU_NBD_SOCK_TAG = 'qemu_nbd_sock'
 QEMU_QMP_LOG_TAG = 'qemu_qmp_log'
 ACTIVE_ON_TAG = 'active_on'
 SNAPSHOT_OF_TAG = 'snapshot_of'
+IS_A_SNAPSHOT_TAG = 'is_a_snapshot'
 IMAGE_FORMAT_TAG = 'image-format'
 DATAPATH_TAG = 'datapath'
 CEPH_CLUSTER_TAG = 'cluster'
+PARENT_URI_TAG = 'parent'
+REF_COUNT_TAG = 'ref_count'
 
 # define tag types
 TAG_TYPES = {
@@ -56,63 +59,64 @@ TAG_TYPES = {
     SNAPSHOT_OF_TAG: str,
     IMAGE_FORMAT_TAG: str,
     DATAPATH_TAG: str,
-    CEPH_CLUSTER_TAG: str
+    CEPH_CLUSTER_TAG: str,
+    PARENT_URI_TAG: str,
+    REF_COUNT_TAG: int
 }
 
 
 class MetadataHandler(object):
 
-    @staticmethod
-    def _create(dbg, uri):
-        raise NotImplementedError('Override in MetadataHandler specifc class')
+    def _create(self, dbg, uri):
+        raise NotImplementedError('Override in MetadataHandler specific class')
 
-    @staticmethod
-    def _destroy(dbg, uri):
-        raise NotImplementedError('Override in MetadataHandler specifc class')
+    def _destroy(self, dbg, uri):
+        raise NotImplementedError('Override in MetadataHandler specific class')
 
-    @staticmethod
-    def _remove(dbg, uri):
-        raise NotImplementedError('Override in MetadataHandler specifc class')
+    def _remove(self, dbg, uri):
+        raise NotImplementedError('Override in MetadataHandler specific class')
 
-    @staticmethod
-    def _load(dbg, uri):
-        raise NotImplementedError('Override in MetadataHandler specifc class')
+    def _load(self, dbg, uri):
+        raise NotImplementedError('Override in MetadataHandler specific class')
 
-    @staticmethod
-    def _update(dbg, uri, image_meta):
-        raise NotImplementedError('Override in MetadataHandler specifc class')
+    def _update(self, dbg, uri, image_meta):
+        raise NotImplementedError('Override in MetadataHandler specific class')
 
-    @classmethod
-    def create(cls, dbg, uri):
+    def _get_vdi_chain(self, dbg, uri):
+        raise NotImplementedError('Override in MetadataHandler specific class')
+
+    def create(self, dbg, uri):
         log.debug("%s: meta.MetadataHandler.create: uri: %s "
                   % (dbg, uri))
 
-        return cls._create(dbg, uri)
+        return self._create(dbg, uri)
 
-    @classmethod
-    def destroy(cls, dbg, uri):
+    def destroy(self, dbg, uri):
         log.debug("%s: meta.MetadataHandler.create: uri: %s "
                   % (dbg, uri))
 
-        return cls._destroy(dbg, uri)
+        return self._destroy(dbg, uri)
 
-    @classmethod
-    def remove(cls, dbg, uri):
+    def remove(self, dbg, uri):
         log.debug("%s: meta.MetadataHandler.remove: uri: %s "
                   % (dbg, uri))
 
-        return cls._remove(dbg, uri)
+        return self._remove(dbg, uri)
 
-    @classmethod
-    def load(cls, dbg, uri):
+    def load(self, dbg, uri):
         log.debug("%s: meta.MetadataHandler.load: uri: %s "
                   % (dbg, uri))
 
-        return cls._load(dbg, uri)
+        return self._load(dbg, uri)
 
-    @classmethod
-    def update(cls, dbg, uri, image_meta):
+    def update(self, dbg, uri, image_meta):
         log.debug("%s: meta.MetadataHandler.update: uri: %s "
                   % (dbg, uri))
 
-        cls._update(dbg, uri, image_meta)
+        self._update(dbg, uri, image_meta)
+
+    def get_vdi_chain(self, dbg, uri):
+        log.debug("%s: meta.MetadataHandler.get_vdi_chain: uri: %s "
+                  % (dbg, uri))
+
+        return self._get_vdi_chain(dbg, uri)

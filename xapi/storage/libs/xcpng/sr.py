@@ -190,6 +190,9 @@ class SR(object):
 
         uri = "%s%s" % (uri, sr_uuid)
 
+        configuration['mountpoint'] = "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))
+        call(['mkdir', '-p', configuration['mountpoint']])
+
         try:
             self.SROpsHendler.create(dbg, uri, configuration)
         except Exception:

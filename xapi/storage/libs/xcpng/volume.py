@@ -8,10 +8,11 @@ from subprocess import call
 
 from xapi.storage.libs.xcpng.utils import get_vdi_type_by_uri, get_vdi_datapath_by_uri, \
                                           validate_and_round_vhd_size, fullSizeVHD, get_current_host_uuid
-from xapi.storage.libs.xcpng.meta import KEY_TAG, UUID_TAG, NAME_TAG, PATH_TAG, DESCRIPTION_TAG, READ_WRITE_TAG, \
+from xapi.storage.libs.xcpng.meta import KEY_TAG, UUID_TAG, NAME_TAG, PARENT_URI_TAG, DESCRIPTION_TAG, READ_WRITE_TAG, \
                                          VIRTUAL_SIZE_TAG, PHYSICAL_UTILISATION_TAG, URI_TAG, SHARABLE_TAG, \
                                          CUSTOM_KEYS_TAG, TYPE_TAG, SNAPSHOT_OF_TAG, ACTIVE_ON_TAG, \
-                                         QEMU_PID_TAG, QEMU_NBD_SOCK_TAG, QEMU_QMP_SOCK_TAG, QEMU_QMP_LOG_TAG
+                                         QEMU_PID_TAG, QEMU_NBD_SOCK_TAG, QEMU_QMP_SOCK_TAG, QEMU_QMP_LOG_TAG, \
+                                         IS_A_SNAPSHOT_TAG
 from xapi.storage.libs.xcpng.meta import MetadataHandler
 from xapi.storage.libs.xcpng.datapath import DATAPATHES
 from xapi.storage import log
@@ -86,9 +87,13 @@ class Volume(object):
             CUSTOM_KEYS_TAG: {}
         }
 
-        image_meta = self._create(dbg, sr, name, description, size, sharable, image_meta)
-
         self.MetadataHandler.update(dbg, vdi_uri, image_meta)
+
+        try:
+            image_meta = self._create(dbg, sr, name, description, size, sharable, image_meta)
+        except Exception:
+            self.MetadataHandler.remove(dbg, vdi_uri)
+            raise Volume_does_not_exist(vdi_uuid)
 
         return image_meta
 
@@ -239,8 +244,8 @@ class Volume(object):
         except Exception:
             raise Volume_does_not_exist(key)
 
-        if SNAPSHOT_OF_TAG in orig_meta:
-            base_uri = "%s/%s" % (sr, orig_meta[SNAPSHOT_OF_TAG])
+        if IS_A_SNAPSHOT_TAG in orig_meta[CUSTOM_KEYS_TAG]:
+            base_uri = orig_meta[PARENT_URI_TAG][0]
             try:
                 base_meta = self.MetadataHandler.load(dbg, base_uri)
             except Exception:
@@ -307,116 +312,123 @@ class QCOW2Volume(RAWVolume):
         datapath = get_vdi_datapath_by_uri(dbg, sr)
         devnull = open(os.devnull, 'wb')
 
-        try:
-            if base_meta[KEY_TAG] == key:
-                # create clone
-                clone_meta = self.create(dbg,
-                                         sr,
-                                         base_meta[NAME_TAG],
-                                         base_meta[DESCRIPTION_TAG],
-                                         base_meta[VIRTUAL_SIZE_TAG],
-                                         base_meta[SHARABLE_TAG])
+        #try:
+        if base_meta[KEY_TAG] == key:
+            # create clone
+            clone_meta = self.create(dbg,
+                                     sr,
+                                     base_meta[NAME_TAG],
+                                     base_meta[DESCRIPTION_TAG],
+                                     base_meta[VIRTUAL_SIZE_TAG],
+                                     base_meta[SHARABLE_TAG])
 
-                # create new base
-                new_base_meta = self.create(dbg,
-                                            sr,
-                                            base_meta[NAME_TAG],
-                                            base_meta[DESCRIPTION_TAG],
-                                            base_meta[VIRTUAL_SIZE_TAG],
-                                            base_meta[SHARABLE_TAG])
+            # create new base
+            new_base_meta = self.create(dbg,
+                                        sr,
+                                        base_meta[NAME_TAG],
+                                        base_meta[DESCRIPTION_TAG],
+                                        base_meta[VIRTUAL_SIZE_TAG],
+                                        base_meta[SHARABLE_TAG])
 
-                # swap base and new base
-                self.VolOpsHendler.swap(dbg, base_meta[URI_TAG], new_base_meta[URI_TAG])
+            # swap base and new base
+            self.VolOpsHendler.swap(dbg, base_meta[URI_TAG][0], new_base_meta[URI_TAG][0])
 
-                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG])
-                self.Datapathes[datapath].map_vol(dbg, base_meta[URI_TAG])
+            self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG][0])
+            self.Datapathes[datapath].map_vol(dbg, base_meta[URI_TAG][0])
 
-                call(["/usr/lib64/qemu-dp/bin/qemu-img",
-                      "rebase",
-                      "-u",
-                      "-f", base_meta[TYPE_TAG],
-                      "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG]),
-                      self.Datapathes[datapath].gen_vol_path(dbg, base_meta[URI_TAG])],
-                      stdout=devnull, stderr=devnull)
+            call(["/usr/lib64/qemu-dp/bin/qemu-img",
+                  "rebase",
+                  "-u",
+                  "-f", base_meta[TYPE_TAG],
+                  "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG][0]),
+                  self.Datapathes[datapath].gen_vol_path(dbg, base_meta[URI_TAG][0])],
+                  stdout=devnull, stderr=devnull)
 
-                call(["/usr/lib64/qemu-dp/bin/qemu-img",
-                      "rebase",
-                      "-u",
-                      "-f", clone_meta[TYPE_TAG],
-                      "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG]),
-                      self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG])],
-                      stdout=devnull, stderr=devnull)
+            call(["/usr/lib64/qemu-dp/bin/qemu-img",
+                  "rebase",
+                  "-u",
+                  "-f", clone_meta[TYPE_TAG],
+                  "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG][0]),
+                  self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG][0])],
+                  stdout=devnull, stderr=devnull)
 
-                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG])
-                self.Datapathes[datapath].unmap_vol(dbg, base_meta[URI_TAG])
+            self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG][0])
 
-                new_base_uuid = new_base_meta[UUID_TAG]
-                new_base_meta = deepcopy(base_meta)
-                new_base_meta[NAME_TAG] = "(base) %s" % new_base_meta[NAME_TAG]
-                new_base_meta[KEY_TAG] = new_base_uuid
-                new_base_meta[UUID_TAG] = new_base_uuid
-                new_base_meta[URI_TAG] = ["%s/%s" % (sr, new_base_uuid)]
-                new_base_meta[READ_WRITE_TAG] = False
+            new_base_uuid = new_base_meta[UUID_TAG]
+            new_base_meta = deepcopy(base_meta)
+            new_base_meta[NAME_TAG] = "(base) %s" % new_base_meta[NAME_TAG]
+            new_base_meta[KEY_TAG] = new_base_uuid
+            new_base_meta[UUID_TAG] = new_base_uuid
+            new_base_meta[URI_TAG] = ["%s/%s" % (sr, new_base_uuid)]
+            new_base_meta[READ_WRITE_TAG] = False
 
-                if ACTIVE_ON_TAG in new_base_meta:
-                    self.Datapathes[datapath].snapshot(dbg, new_base_meta[URI_TAG][0], base_meta[URI_TAG][0], 0)
-
-                if ACTIVE_ON_TAG in new_base_meta:
-                    new_base_meta[ACTIVE_ON_TAG] = None
-                    new_base_meta[QEMU_PID_TAG] = None
-                    new_base_meta[QEMU_NBD_SOCK_TAG] = None
-                    new_base_meta[QEMU_QMP_SOCK_TAG] = None
-                    new_base_meta[QEMU_QMP_LOG_TAG] = None
-
-                self.MetadataHandler.update(dbg, new_base_meta[URI_TAG][0], new_base_meta)
-                self.MetadataHandler.update(dbg, base_meta[URI_TAG][0], base_meta)
-
+            if ACTIVE_ON_TAG in new_base_meta:
+                self.Datapathes[datapath].snapshot(dbg, new_base_meta[URI_TAG][0], base_meta[URI_TAG][0], 0)
             else:
-                # create clone
-                clone_meta = self.create(dbg,
-                                         sr,
-                                         base_meta[NAME_TAG],
-                                         base_meta[DESCRIPTION_TAG],
-                                         base_meta[VIRTUAL_SIZE_TAG],
-                                         base_meta[SHARABLE_TAG])
+                self.Datapathes[datapath].unmap_vol(dbg, base_meta[URI_TAG][0])
 
-                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG])
+            if ACTIVE_ON_TAG in new_base_meta:
+                new_base_meta[ACTIVE_ON_TAG] = None
+                new_base_meta[QEMU_PID_TAG] = None
+                new_base_meta[QEMU_NBD_SOCK_TAG] = None
+                new_base_meta[QEMU_QMP_SOCK_TAG] = None
+                new_base_meta[QEMU_QMP_LOG_TAG] = None
 
-                call(["/usr/lib64/qemu-dp/bin/qemu-img",
-                      "rebase",
-                      "-f", base_meta[TYPE_TAG],
-                      "-b", self.Datapathes[datapath].gen_vol_uri(dbg, base_meta[URI_TAG]), # TODO: Fix it to datapath like rbd://cluster/pool/image. For ZFSSR it is the same as path
-                      self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG])],
-                      stdout = devnull, stderr = devnull)
+            base_meta[PARENT_URI_TAG] = new_base_meta[URI_TAG]
+            clone_parent = new_base_meta[URI_TAG]
 
-                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG])
+            self.MetadataHandler.update(dbg, new_base_meta[URI_TAG][0], new_base_meta)
+            self.MetadataHandler.update(dbg, base_meta[URI_TAG][0], base_meta)
 
-            clone_uuid = clone_meta[UUID_TAG]
-            clone_meta = deepcopy(base_meta)
-            clone_meta[KEY_TAG] = clone_uuid
-            clone_meta[UUID_TAG] = clone_uuid
-            clone_meta[URI_TAG] = ["%s/%s" % (sr, clone_uuid)]
+        else:
+            # create clone
+            clone_meta = self.create(dbg,
+                                     sr,
+                                     base_meta[NAME_TAG],
+                                     base_meta[DESCRIPTION_TAG],
+                                     base_meta[VIRTUAL_SIZE_TAG],
+                                     base_meta[SHARABLE_TAG])
 
-            if ACTIVE_ON_TAG in clone_meta:
-                clone_meta.pop(ACTIVE_ON_TAG, None)
-                clone_meta.pop(QEMU_PID_TAG, None)
-                clone_meta.pop(QEMU_NBD_SOCK_TAG, None)
-                clone_meta.pop(QEMU_QMP_SOCK_TAG, None)
-                clone_meta.pop(QEMU_QMP_LOG_TAG, None)
+            self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG][0])
 
-            if mode is 'snapshot':
-                clone_meta[READ_WRITE_TAG] = False
-                clone_meta[SNAPSHOT_OF_TAG] = new_base_meta[UUID_TAG]
-            elif mode is 'clone':
-                clone_meta[READ_WRITE_TAG] = True
+            call(["/usr/lib64/qemu-dp/bin/qemu-img",
+                  "rebase",
+                  "-u",
+                  "-f", base_meta[TYPE_TAG],
+                  "-b", self.Datapathes[datapath].gen_vol_uri(dbg, base_meta[URI_TAG][0]), # TODO: Fix it to datapath like rbd://cluster/pool/image. For ZFSSR it is the same as path
+                  self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG][0])],
+                  stdout = devnull, stderr = devnull)
 
-            self.MetadataHandler.update(dbg, clone_meta[URI_TAG][0], clone_meta)
+            self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG][0])
 
-            return clone_meta
-        except Exception:
-            raise Volume_does_not_exist(key)
-        finally:
-            devnull.close()
+            clone_parent = base_meta[URI_TAG]
+
+        clone_uuid = clone_meta[UUID_TAG]
+        clone_meta = deepcopy(base_meta)
+        clone_meta[KEY_TAG] = clone_uuid
+        clone_meta[UUID_TAG] = clone_uuid
+        clone_meta[URI_TAG] = ["%s/%s" % (sr, clone_uuid)]
+        clone_meta[PARENT_URI_TAG] =  clone_parent
+
+        if ACTIVE_ON_TAG in clone_meta:
+            clone_meta.pop(ACTIVE_ON_TAG, None)
+            clone_meta.pop(QEMU_PID_TAG, None)
+            clone_meta.pop(QEMU_NBD_SOCK_TAG, None)
+            clone_meta.pop(QEMU_QMP_SOCK_TAG, None)
+            clone_meta.pop(QEMU_QMP_LOG_TAG, None)
+
+        if mode is 'snapshot':
+            clone_meta[READ_WRITE_TAG] = False
+        elif mode is 'clone':
+            clone_meta[READ_WRITE_TAG] = True
+
+        self.MetadataHandler.update(dbg, clone_meta[URI_TAG][0], clone_meta)
+
+        return clone_meta
+        #except Exception:
+        #    raise Volume_does_not_exist(key)
+        #finally:
+        #    devnull.close()
 
     def _create(self, dbg, sr, name, description, size, sharable, image_meta):
         log.debug("%s: xcpng.QCOW2Volume._create: SR: %s Name: %s Description: %s Size: %s"

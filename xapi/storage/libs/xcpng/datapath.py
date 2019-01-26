@@ -7,7 +7,7 @@ from xapi.storage import log
 
 from xapi.storage.libs.xcpng.meta import MetadataHandler
 from xapi.storage.libs.xcpng.meta import NON_PERSISTENT_TAG, ACTIVE_ON_TAG, UUID_TAG, QEMU_PID_TAG, QEMU_QMP_SOCK_TAG, \
-                                         QEMU_NBD_SOCK_TAG, QEMU_QMP_LOG_TAG
+                                         QEMU_NBD_SOCK_TAG, QEMU_QMP_LOG_TAG, PARENT_URI_TAG, REF_COUNT_TAG
 from xapi.storage.libs.xcpng.qemudisk import introduce, create, Qemudisk, ROOT_NODE_NAME
 
 from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_current_host_uuid, get_sr_uuid_by_uri, \
@@ -22,7 +22,7 @@ elif platform.linux_distribution()[1] == '7.6.0':
 class Datapath(object):
 
     def __init__(self):
-        self.MetadataHandler = MetadataHandler
+        self.MetadataHandler = MetadataHandler()
         self.blkdev = None
 
     def gen_vol_path(self, dbg, uri):
@@ -31,14 +31,43 @@ class Datapath(object):
     def gen_vol_uri(self, dbg, uri):
         return self.gen_vol_path(dbg, uri)
 
-    def map_vol(self, dbg, uri):
+    def map_vol(self, dbg, uri, chained=False):
         if self.blkdev:
-            call(['ln', '-s', self.blkdev, self.gen_vol_path(dbg, uri)])
+            _blkdev_ = self.blkdev
+            image_meta = self.MetadataHandler.load(dbg, uri)
 
-    def unmap_vol(self, dbg, uri):
+            if chained:
+                if PARENT_URI_TAG in image_meta:
+                    self.map_vol(dbg, image_meta[PARENT_URI_TAG][0], chained)
+
+            if REF_COUNT_TAG in image_meta:
+                new_meta = {}
+                new_meta[REF_COUNT_TAG] = image_meta[REF_COUNT_TAG] + 1
+                self.MetadataHandler.update(dbg, uri, new_meta)
+            else:
+                new_meta = {}
+                new_meta[REF_COUNT_TAG] = 1
+                call(['ln', '-s', _blkdev_, self.gen_vol_path(dbg, uri)])
+                self.MetadataHandler.update(dbg, uri, new_meta)
+
+    def unmap_vol(self, dbg, uri, chained=False):
+        image_meta = self.MetadataHandler.load(dbg, uri)
         path = self.gen_vol_path(dbg, uri)
-        if exists(path):
-            call(['unlink', path])
+
+        if REF_COUNT_TAG in image_meta:
+            new_meta = {}
+            if image_meta[REF_COUNT_TAG] == 1:
+                new_meta[REF_COUNT_TAG] = None
+                if exists(path):
+                    call(['unlink', path])
+            else:
+                new_meta[REF_COUNT_TAG] = image_meta[REF_COUNT_TAG] - 1
+            self.MetadataHandler.update(dbg, uri, new_meta)
+
+        if chained:
+            if PARENT_URI_TAG in image_meta:
+                self.unmap_vol(dbg, image_meta[PARENT_URI_TAG][0], chained)
+
 
     def _open(self, dbg, uri, domain):
         raise NotImplementedError('Override in Datapath specifc class')
@@ -107,6 +136,8 @@ class Datapath(object):
         log.debug("%s: xcpng.Datapath.attach: uri: %s domain: %s"
                   % (dbg, uri, domain))
 
+        self.map_vol(dbg, uri, chained=True)
+
         if platform.linux_distribution()[1] == '7.5.0':
             protocol, params = self._attach(dbg, uri, domain)
             return {
@@ -125,6 +156,8 @@ class Datapath(object):
         log.debug("%s: xcpng.Datapath.detach: uri: %s domain: %s"
                   % (dbg, uri, domain))
 
+        self.unmap_vol(dbg, uri, chained=True)
+
         self._detach(dbg, uri, domain)
 
     def _activate(self, dbg, uri, domain):
@@ -136,7 +169,6 @@ class Datapath(object):
 
         # TODO: Check that VDI is not active on other host
 
-        self.map_vol(dbg, uri)
         self._activate(dbg, uri, domain)
 
         image_meta = {
@@ -153,7 +185,6 @@ class Datapath(object):
                   % (dbg, uri, domain))
 
         self._deactivate(dbg, uri, domain)
-        self.unmap_vol(dbg, uri)
 
         image_meta = {
             ACTIVE_ON_TAG: None
