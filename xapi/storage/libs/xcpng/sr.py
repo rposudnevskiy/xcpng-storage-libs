@@ -3,10 +3,9 @@
 import json
 import platform
 from copy import deepcopy
-from subprocess import call
 
+from xapi.storage.libs.xcpng.utils import call
 from xapi.storage import log
-
 from xapi.storage.libs.xcpng.meta import IMAGE_FORMAT_TAG, SR_UUID_TAG, CONFIGURATION_TAG, NAME_TAG, DESCRIPTION_TAG, \
                                          DATAPATH_TAG, UUID_TAG, KEY_TAG, READ_WRITE_TAG, VIRTUAL_SIZE_TAG, \
                                          PHYSICAL_UTILISATION_TAG, URI_TAG, CUSTOM_KEYS_TAG, SHARABLE_TAG, \
@@ -15,12 +14,8 @@ from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_sr_uuid_by_name, g
 
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import SR_skeleton
-    from xapi.storage.api.v4.volume import Sr_not_attached
-    from xapi.storage.api.v4.volume import Volume_does_not_exist
 elif platform.linux_distribution()[1] == '7.6.0':
     from xapi.storage.api.v5.volume import SR_skeleton
-    from xapi.storage.api.v5.volume import Sr_not_attached
-    from xapi.storage.api.v5.volume import Volume_does_not_exist
 
 
 class SROperations(object):
@@ -35,11 +30,10 @@ class SROperations(object):
     def destroy(self, dbg, uri):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
-    def get_sr_list(self, dbg, configuration):
+    def get_sr_list(self, dbg, uri, configuration):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
     def get_vdi_list(self, dbg, uri):
-        # zvol.startswith(utils.VDI_PREFIXES[utils.get_vdi_type_by_uri(dbg, uri)]):
         raise NotImplementedError('Override in VolumeOperations specifc class')
 
     def sr_import(self, dbg, uri, configuration):
@@ -77,7 +71,6 @@ class SR(object):
 
     def __init__(self):
         self.sr_type = ''
-        # self.sr_name_prefix = ''
         self.MetadataHandler = MetadataHandler()
         self.SROpsHendler = SROperations()
 
@@ -99,79 +92,83 @@ class SR(object):
 
         result = []
 
-        log.debug("%s: xcpng.sr.SR.probe: Available Pools" % dbg)
-        log.debug("%s: xcpng.sr.SR.probe: ---------------------------------------------------" % dbg)
+        try:
+            srs = self.SROpsHendler.get_sr_list(dbg, uri, configuration)
 
-        srs = self.SROpsHendler.get_sr_list(dbg, configuration)
+            log.debug("%s: xcpng.sr.SR.probe: Available Pools" % dbg)
+            log.debug("%s: xcpng.sr.SR.probe: ---------------------------------------------------" % dbg)
 
-        for sr_name in srs:
-            log.debug("%s: xcpng.sr.SR.probe: %s" % (dbg, sr_name))
+            for sr_name in srs:
+                log.debug("%s: xcpng.sr.SR.probe: %s" % (dbg, sr_name))
 
-            sr_uuid = get_sr_uuid_by_name(dbg, sr_name)
+                sr_uuid = get_sr_uuid_by_name(dbg, sr_name)
 
-            self.SROpsHendler.sr_import(dbg, "%s%s" % (_uri_, sr_uuid), configuration)
-            sr_meta = self.MetadataHandler.load(dbg, "%s%s" % (_uri_, sr_uuid))
+                self.SROpsHendler.sr_import(dbg, "%s%s" % (_uri_, sr_uuid), configuration)
+                sr_meta = self.MetadataHandler.load(dbg, "%s%s" % (_uri_, sr_uuid))
 
-            if (IMAGE_FORMAT_TAG in configuration and
-                ((CONFIGURATION_TAG in sr_meta and
-                  IMAGE_FORMAT_TAG in sr_meta[CONFIGURATION_TAG] and
-                  configuration[IMAGE_FORMAT_TAG] != sr_meta[CONFIGURATION_TAG][IMAGE_FORMAT_TAG]) or
-                 (CONFIGURATION_TAG in sr_meta and
-                  IMAGE_FORMAT_TAG not in sr_meta[CONFIGURATION_TAG]) or
-                 CONFIGURATION_TAG not in sr_meta)):
-                sr_name = None
+                if (IMAGE_FORMAT_TAG in configuration and
+                    ((CONFIGURATION_TAG in sr_meta and
+                      IMAGE_FORMAT_TAG in sr_meta[CONFIGURATION_TAG] and
+                      configuration[IMAGE_FORMAT_TAG] != sr_meta[CONFIGURATION_TAG][IMAGE_FORMAT_TAG]) or
+                     (CONFIGURATION_TAG in sr_meta and
+                      IMAGE_FORMAT_TAG not in sr_meta[CONFIGURATION_TAG]) or
+                     CONFIGURATION_TAG not in sr_meta)):
+                    sr_name = None
 
-            if (DATAPATH_TAG in configuration and
-                ((CONFIGURATION_TAG in sr_meta and
-                  DATAPATH_TAG in sr_meta[CONFIGURATION_TAG] and
-                  configuration[DATAPATH_TAG] != sr_meta[CONFIGURATION_TAG][DATAPATH_TAG]) or
-                 (CONFIGURATION_TAG in sr_meta and
-                  DATAPATH_TAG not in sr_meta[CONFIGURATION_TAG]) or
-                 CONFIGURATION_TAG not in sr_meta)):
-                sr_name = None
+                if (DATAPATH_TAG in configuration and
+                    ((CONFIGURATION_TAG in sr_meta and
+                      DATAPATH_TAG in sr_meta[CONFIGURATION_TAG] and
+                      configuration[DATAPATH_TAG] != sr_meta[CONFIGURATION_TAG][DATAPATH_TAG]) or
+                     (CONFIGURATION_TAG in sr_meta and
+                      DATAPATH_TAG not in sr_meta[CONFIGURATION_TAG]) or
+                     CONFIGURATION_TAG not in sr_meta)):
+                    sr_name = None
 
-            if (SR_UUID_TAG in configuration and
-                ((CONFIGURATION_TAG in sr_meta and
-                  SR_UUID_TAG in sr_meta[CONFIGURATION_TAG] and
-                  configuration[SR_UUID_TAG] != sr_meta[CONFIGURATION_TAG][SR_UUID_TAG]) or
-                 (CONFIGURATION_TAG in sr_meta and
-                  SR_UUID_TAG not in sr_meta[CONFIGURATION_TAG] and
-                  SR_UUID_TAG in sr_meta and
-                  configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
-                 (CONFIGURATION_TAG not in sr_meta and
-                  SR_UUID_TAG in sr_meta and
-                  configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
-                 SR_UUID_TAG not in sr_meta)):
-                sr_name = None
+                if (SR_UUID_TAG in configuration and
+                    ((CONFIGURATION_TAG in sr_meta and
+                      SR_UUID_TAG in sr_meta[CONFIGURATION_TAG] and
+                      configuration[SR_UUID_TAG] != sr_meta[CONFIGURATION_TAG][SR_UUID_TAG]) or
+                     (CONFIGURATION_TAG in sr_meta and
+                      SR_UUID_TAG not in sr_meta[CONFIGURATION_TAG] and
+                      SR_UUID_TAG in sr_meta and
+                      configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
+                     (CONFIGURATION_TAG not in sr_meta and
+                      SR_UUID_TAG in sr_meta and
+                      configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
+                     SR_UUID_TAG not in sr_meta)):
+                    sr_name = None
 
-            if SR_UUID_TAG not in sr_meta:
-                sr_name = None
+                if SR_UUID_TAG not in sr_meta:
+                    sr_name = None
 
-            if sr_name is not None:
-                _result_ = {}
-                _result_['complete'] = True
-                _result_['configuration'] = {}
-                _result_['configuration'] = deepcopy(configuration)
-                _result_['extra_info'] = {}
+                if sr_name is not None:
+                    _result_ = {}
+                    _result_['complete'] = True
+                    _result_['configuration'] = {}
+                    _result_['configuration'] = deepcopy(configuration)
+                    _result_['extra_info'] = {}
 
-                sr = {}
-                sr['sr'] = "%s%s" % (_uri_, sr_meta[SR_UUID_TAG])
-                sr['name'] = sr_meta[NAME_TAG] if NAME_TAG in sr_meta \
-                                               else self.SROpsHendler.DEFAULT_SR_NAME
-                sr['description'] = sr_meta[DESCRIPTION_TAG] if DESCRIPTION_TAG in sr_meta \
-                                                             else self.SROpsHendler.DEFAULT_SR_DESCRIPTION
-                sr['free_space'] = self.SROpsHendler.get_free_space(dbg, "%s%s" % (_uri_, sr_uuid))
-                sr['total_space'] = self.SROpsHendler.get_size(dbg, "%s%s" % (_uri_, sr_uuid))
-                sr['datasources'] = self.SROpsHendler.get_datasources(dbg, "%s%s" % (_uri_, sr_uuid))
-                sr['clustered'] = self.SROpsHendler.get_clustered(dbg, "%s%s" % (_uri_, sr_uuid))
-                sr['health'] = self.SROpsHendler.get_health(dbg, "%s%s" % (_uri_, sr_uuid))
+                    sr = {}
+                    sr['sr'] = "%s%s" % (_uri_, sr_meta[SR_UUID_TAG])
+                    sr['name'] = sr_meta[NAME_TAG] if NAME_TAG in sr_meta \
+                                                   else self.SROpsHendler.DEFAULT_SR_NAME
+                    sr['description'] = sr_meta[DESCRIPTION_TAG] if DESCRIPTION_TAG in sr_meta \
+                                                                 else self.SROpsHendler.DEFAULT_SR_DESCRIPTION
+                    sr['free_space'] = self.SROpsHendler.get_free_space(dbg, "%s%s" % (_uri_, sr_uuid))
+                    sr['total_space'] = self.SROpsHendler.get_size(dbg, "%s%s" % (_uri_, sr_uuid))
+                    sr['datasources'] = self.SROpsHendler.get_datasources(dbg, "%s%s" % (_uri_, sr_uuid))
+                    sr['clustered'] = self.SROpsHendler.get_clustered(dbg, "%s%s" % (_uri_, sr_uuid))
+                    sr['health'] = self.SROpsHendler.get_health(dbg, "%s%s" % (_uri_, sr_uuid))
 
-                _result_['sr'] = sr
-                _result_['configuration']['sr_uuid'] = sr_meta[SR_UUID_TAG]
+                    _result_['sr'] = sr
+                    _result_['configuration']['sr_uuid'] = sr_meta[SR_UUID_TAG]
 
-                result.append(_result_)
+                    result.append(_result_)
 
-            self.SROpsHendler.sr_export(dbg, "%s%s" % (_uri_, sr_uuid))
+                self.SROpsHendler.sr_export(dbg, "%s%s" % (_uri_, sr_uuid))
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.probe: Failed to prope SRs for configuration: %s" % (dbg, configuration))
+            raise Exception(e)
 
         return result
 
@@ -191,54 +188,46 @@ class SR(object):
         uri = "%s%s" % (uri, sr_uuid)
 
         configuration['mountpoint'] = "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))
-        call(['mkdir', '-p', configuration['mountpoint']])
 
         try:
+            call(dbg, ['mkdir', '-p', configuration['mountpoint']])
+
             self.SROpsHendler.create(dbg, uri, configuration)
-        except Exception:
-            log.debug("%s: xcpng.sr.SR.create: Failed to create SR - sr_uuid: %s" % (dbg, sr_uuid))
-            raise Exception
-
-        try:
             self.MetadataHandler.create(dbg, uri)
-        except Exception:
+
+            configuration['sr_uuid'] = sr_uuid
+            pool_meta = {
+                SR_UUID_TAG: sr_uuid,
+                NAME_TAG: name,
+                DESCRIPTION_TAG: description,
+                CONFIGURATION_TAG: json.dumps(configuration)
+            }
+
+            self.MetadataHandler.update(dbg, uri, pool_meta)
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.create: Failed to create SR - sr_uuid: %s" % (dbg, sr_uuid))
             try:
                 self.SROpsHendler.sr_export(dbg, uri)
                 self.SROpsHendler.destroy(dbg, uri)
-            except Exception:
-                raise Exception
-            log.debug("%s: xcpng.sr.SR.create: Failed to create SR metadata - sr_uuid: %s" % (dbg, sr_uuid))
-            raise Exception
-
-        configuration['sr_uuid'] = sr_uuid
-
-        pool_meta = {
-            SR_UUID_TAG: sr_uuid,
-            NAME_TAG: name,
-            DESCRIPTION_TAG: description,
-            CONFIGURATION_TAG: json.dumps(configuration)
-        }
+            except:
+                pass
+            raise Exception(e)
 
         try:
-            self.MetadataHandler.update(dbg, uri, pool_meta)
-        except Exception:
-            log.debug("%s: xcpng.sr.SR.create: Failed to update pool metadata - sr_uuid: %s" % (dbg, sr_uuid))
-            raise Exception
-
-        self.SROpsHendler.sr_export(dbg, uri)
+            self.SROpsHendler.sr_export(dbg, uri)
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.create: Created but failed to export SR after creation - sr_uuid: %s"
+                      "Please check and export SR manually before attaching the SR" % (dbg, sr_uuid))
 
         return configuration
 
     def destroy(self, dbg, uri):
         log.debug("%s: xcpng.sr.SR.destroy: uri: %s" % (dbg, uri))
-
-        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
-
         try:
             self.SROpsHendler.destroy(dbg, uri)
-        except Exception:
-            log.debug("%s: xcpng.sr.SR.destroy: Failed to destroy SR - sr_uuid: %s" % (dbg, sr_uuid))
-            raise Exception
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.destroy: Failed to destroy SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
+            raise Exception(e)
 
     def attach(self, dbg, configuration):
         log.debug("%s: xcpng.sr.SR.attach: configuration: %s" % (dbg, configuration))
@@ -251,49 +240,45 @@ class SR(object):
             uri = "%s://" % self.sr_type
 
         uri = self.SROpsHendler.extend_uri(dbg, uri, configuration)
-
-        uri="%s%s" % (uri, configuration[SR_UUID_TAG]) if SR_UUID_TAG in configuration else uri
-
-        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
-
-        log.debug("%s: xcpng.sr.SR.attach: uri %s sr_uuid: %s" % (dbg, uri, sr_uuid))
-
+        uri = "%s%s" % (uri, configuration[SR_UUID_TAG]) if SR_UUID_TAG in configuration else uri
         configuration['mountpoint'] = "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))
-        call(['mkdir', '-p', configuration['mountpoint']])
 
         try:
+            call(dbg, ['mkdir', '-p', configuration['mountpoint']])
             self.SROpsHendler.sr_import(dbg, uri, configuration)
-        except Exception:
-            log.debug("%s: xcpng.sr.SR.attach: Failed to attach SR - sr_uuid: %s" % (dbg, sr_uuid))
-            raise Sr_not_attached(configuration['sr_uuid'])
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.attach: Failed to attach SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
+            try:
+                self.SROpsHendler.sr_export(dbg, uri)
+            except:
+                pass
+            raise Exception(e)
 
         return uri
 
     def detach(self, dbg, uri):
         log.debug("%s: xcpng.sr.SR.detach: uri: %s" % (dbg, uri))
-
-        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
-
         try:
             self.SROpsHendler.sr_export(dbg, uri)
-        except Exception:
-            log.debug("%s: xcpng.sr.SR.detach: Failed to detach SR - sr_uuid: %s" % (dbg, sr_uuid))
-            raise Exception
-
-        call(['rm', '-rf', "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))])
-
+            call(dbg, ['rm', '-rf', "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))])
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.detach: Failed to detach SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
+            raise Exception(e)
 
     def stat(self, dbg, uri):
         log.debug("%s: xcpng.sr.SR.stat: uri: %s" % (dbg, uri))
 
-        sr_meta = self.MetadataHandler.load(dbg, uri)
+        try:
+            sr_meta = self.MetadataHandler.load(dbg, uri)
+            log.debug("%s: xcpng.sr.SR.stat: pool_meta: %s" % (dbg, sr_meta))
 
-        log.debug("%s: xcpng.sr.SR.stat: pool_meta: %s" % (dbg, sr_meta))
-
-        # Get the sizes
-        tsize = self.SROpsHendler.get_size(dbg, uri)
-        fsize = self.SROpsHendler.get_free_space(dbg, uri)
-        log.debug("%s: xcpng.sr.SR.stat total_space = %Ld free_space = %Ld" % (dbg, tsize, fsize))
+            # Get the sizes
+            tsize = self.SROpsHendler.get_size(dbg, uri)
+            fsize = self.SROpsHendler.get_free_space(dbg, uri)
+            log.debug("%s: xcpng.sr.SR.stat total_space = %Ld free_space = %Ld" % (dbg, tsize, fsize))
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.stat: Failed to get stat for SR: %s" % (dbg, uri))
+            raise Exception(e)
 
         overprovision = 0
 
@@ -322,8 +307,9 @@ class SR(object):
 
         try:
             self.MetadataHandler.update(dbg, uri, sr_meta)
-        except Exception:
-            raise Volume_does_not_exist(uri)
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.set_name: Failed to set name for SR: %s" % (dbg, uri))
+            raise Exception(e)
 
     def set_description(self, dbg, uri, new_description):
         log.debug("%s: xcpng.sr.SR.set_description: SR: %s New_description: %s"
@@ -335,8 +321,9 @@ class SR(object):
 
         try:
             self.MetadataHandler.update(dbg, uri, sr_meta)
-        except Exception:
-            raise Volume_does_not_exist(uri)
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.set_description: Failed to set description for SR: %s" % (dbg, uri))
+            raise Exception(e)
 
     def ls(self, dbg, uri):
         log.debug("%s: xcpng.sr.SR.ls: uri: %s" % (dbg, uri))
@@ -353,7 +340,6 @@ class SR(object):
                 log.debug("%s: xcpng.sr.SR.ls: SR: %s vdi : %s" % (dbg, uri, key))
 
                 volume_meta = self.MetadataHandler.load(dbg, "%s/%s" % (uri, key))
-                # log.debug("%s: xcpng.SR.ls: SR: %s Volume: %s Metadata: %s" % (dbg, uri, Volume, volume_meta))
 
                 results.append({UUID_TAG: volume_meta[UUID_TAG],
                                 KEY_TAG: volume_meta[KEY_TAG],
@@ -365,10 +351,10 @@ class SR(object):
                                 URI_TAG: volume_meta[URI_TAG],
                                 CUSTOM_KEYS_TAG: volume_meta[CUSTOM_KEYS_TAG],
                                 SHARABLE_TAG: volume_meta[SHARABLE_TAG]})
-                # log.debug("%s: xcpng.SR.ls: Result: %s" % (dbg, results))
             return results
-        except Exception:
-            raise Volume_does_not_exist(key)
+        except Exception as e:
+            log.error("%s: xcpng.sr.SR.ls: Failed to list of vdis for SR: %s" % (dbg, uri))
+            raise Exception(e)
 
 
 class Implementation(SR_skeleton):
@@ -409,7 +395,7 @@ class Implementation(SR_skeleton):
         self.SR.set_name(dbg, uri, new_name)
 
     def set_description(self, dbg, uri, new_description):
-        log.debug("%s: xcpng.sr.SR.set_description: SR: %s New_description: %s"
+        log.debug("%s: xcpng.sr.Implementation.set_description: SR: %s New_description: %s"
                   % (dbg, uri, new_description))
         self.SR.set_description(dbg, uri, new_description)
 

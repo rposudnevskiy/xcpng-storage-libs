@@ -6,6 +6,8 @@ import math
 import urlparse
 import xapi
 import errno
+from xapi.storage import log
+from subprocess import Popen, PIPE
 
 SR_PATH_PREFIX = "/run/sr-mount"
 POOL_PREFIX = '_XenStorage-'
@@ -65,34 +67,43 @@ def get_sr_type_by_uri(dbg, uri):
     regex = re.compile('(.*)\+(.*)\+(.*)')
     result = regex.match(scheme)
     return result.group(1).upper()
-#
-# Copyright (C) Citrix Systems Inc.
-#
-
-# Functions from /usr/lib/python2.7/site-packages/xapi/storage/libs/utils.py
-
 
 def get_current_host_uuid():
-    with open("/etc/xensource-inventory") as fd:
-        for line in fd:
-            if line.strip().startswith("INSTALLATION_UUID"):
-                return line.split("'")[1]
+    fd = open("/etc/xensource-inventory")
+    for line in fd:
+        if line.strip().startswith("INSTALLATION_UUID"):
+            return line.split("'")[1]
+    fd.close()
+
+def call(dbg, args):
+    log.debug("%s: Running cmd: %s" % (dbg, args))
+    proc = Popen(args, stdout=PIPE, stderr=PIPE, close_fds=True)
+    stdout, stderr = proc.communicate()
+    if proc.returncode != 0:
+        log.debug("%s: Exec of cmd: %s failed, error: %s, reason: %s" % (dbg, args, os.strerror(proc.returncode), stderr.strip()))
+        raise Exception(os.strerror(proc.returncode))
+    return stdout
+
+def _call(dbg, args):
+    log.debug("%s: Running cmd: %s" % (dbg, args))
+    proc = Popen(args, stdout=PIPE, stderr=PIPE, close_fds=True)
+    stdout, stderr = proc.communicate()
+    log.debug("%s: Cmd return: %s, error: %s, reason: %s" % (dbg, proc.returncode, os.strerror(proc.returncode), stderr.strip()))
+    return proc.returncode
 
 def mkdir_p(path, mode=None):
     if not mode:
         mode = 0o777
-    try:
-        os.makedirs(path, mode)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            if mode:
-                os.chmod(path, mode)
-            pass
-        else:
+    if os.path.exists(path):
+        if mode:
+            os.chmod(path, mode)
+    else:
+        try:
+            os.makedirs(path, mode)
+        except OSError:
             raise
 
 # Functions from /opt/xensource/sm/vhdutil.py
-
 
 def calcOverheadEmpty(virtual_size):
     """Calculate the VHD space overhead (metadata size) for an empty VDI of

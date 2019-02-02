@@ -79,30 +79,30 @@ class Implementation(Data_skeleton):
     """
     Data implementation
     """
-    def __init__(self):
+    def __init__(self, data):
         super(Implementation, self).__init__()
-        self.Data = QdiskData()
+        self.Data = data()
 
     def copy(self, dbg, uri, domain, remote, blocklist):
-        log.debug("%s: Data.copy: uri: %s domain: %s remote: %s blocklist: %s" % (dbg, uri, domain, remote, blocklist))
+        log.debug("%s: xcpng.data.Implementation.copy: uri: %s domain: %s remote: %s blocklist: %s" % (dbg, uri, domain, remote, blocklist))
         return self.Data.copy(dbg, uri, domain, remote, blocklist)
 
     def mirror(self, dbg, uri, domain, remote):
-        log.debug("%s: Data.mirror: uri: %s domain: %s remote: %s" % (dbg, uri, domain, remote))
+        log.debug("%s: xcpng.data.Implementation.mirror: uri: %s domain: %s remote: %s" % (dbg, uri, domain, remote))
         return self.Data.mirror(dbg, uri, domain, remote)
 
     def stat(self, dbg, operation):
-        log.debug("%s: Data.stat: operation: %s" % (dbg, operation))
+        log.debug("%s: xcpng.data.Implementation.stat: operation: %s" % (dbg, operation))
         return self.Data.stat(dbg, operation)
 
     def cancel(self, dbg, operation):
-        log.debug("%s: Data.cancel: operation: %s" % (dbg, operation))
+        log.debug("%s: xcpng.data.Implementation.cancel: operation: %s" % (dbg, operation))
         return self.Data.cancel(dbg, operation)
 
     def destroy(self, dbg, operation):
-        log.debug("%s: Data.destroy: operation: %s" % (dbg, operation))
+        log.debug("%s: xcpng.data.Implementation.destroy: operation: %s" % (dbg, operation))
         return self.Data.destroy(dbg, operation)
 
     def ls(self, dbg):
-        log.debug("%s: Data.ls" % dbg)
+        log.debug("%s: xcpng.data.Implementation.ls" % dbg)
         return self.Data.ls(dbg)

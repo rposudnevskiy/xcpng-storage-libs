@@ -5,13 +5,7 @@ import os
 import re
 import platform
 
-if platform.linux_distribution()[1] == '7.5.0':
-    from xapi.storage.api.v4.volume import Volume_does_not_exist
-elif platform.linux_distribution()[1] == '7.6.0':
-    from xapi.storage.api.v5.volume import Volume_does_not_exist
-
 from xapi.storage import log
-from subprocess import call, Popen, PIPE, check_output
 from xapi.storage.libs.xcpng import utils, qmp
 
 QEMU_DP = "/usr/lib64/qemu-dp/bin/qemu-dp"
@@ -25,7 +19,7 @@ RBD_NODE_NAME = 'rbd_node'
 
 
 def create(dbg, qemudisk, uri):
-    log.debug("%s: qemudisk.create: uri: %s " % (dbg, uri))
+    log.debug("%s: xcpng.qemudisk.create: uri: %s " % (dbg, uri))
 
     vdi_uuid = utils.get_vdi_uuid_by_uri(dbg, uri)
     sr_uuid = utils.get_sr_uuid_by_uri(dbg, uri)
@@ -33,37 +27,44 @@ def create(dbg, qemudisk, uri):
     if vdi_type not in IMAGE_TYPES:
         raise Exception('Incorrect VDI type')
 
-    if platform.linux_distribution()[1] == '7.5.0':
-        utils.mkdir_p(QEMU_DP_SOCKET_DIR)
-    elif platform.linux_distribution()[1] == '7.6.0':
-        utils.mkdir_p(QEMU_DP_SOCKET_DIR, 0o0700)
+    utils.mkdir_p(QEMU_DP_SOCKET_DIR, 0o0700)
 
     nbd_sock = QEMU_DP_SOCKET_DIR + "/qemu-nbd.{}".format(vdi_uuid)
     qmp_sock = QEMU_DP_SOCKET_DIR + "/qmp_sock.{}".format(vdi_uuid)
     qmp_log = QEMU_DP_SOCKET_DIR + "/qmp_log.{}".format(vdi_uuid)
-    log.debug("%s: qemudisk.create: Spawning qemu process for VDI %s with qmp socket at %s"
+    log.debug("%s: xcpng.qemudisk.create: Spawning qemu process for VDI %s with qmp socket at %s"
               % (dbg, vdi_uuid, qmp_sock))
 
     cmd = [QEMU_DP, qmp_sock]
 
-    log_fd = open(qmp_log, 'w+')
-    p = subprocess.Popen(cmd, stdout=log_fd, stderr=log_fd)
+    try:
+        log_fd = open(qmp_log, 'w+')
+        p = subprocess.Popen(cmd, stdout=log_fd, stderr=log_fd)
+    except Exception as e:
+        log.error("%s: xcpng.qemudisk.create: Failed to create qemu_dp instance: uri %s" %
+                  (dbg, uri))
+        try:
+            log_fd.close()
+        except:
+            pass
+        raise Exception(e)
 
-    log.debug("%s: qemudisk.create: New qemu process has pid %d" % (dbg, p.pid))
+    log.debug("%s: xcpng.qemudisk.create: New qemu process has pid %d" % (dbg, p.pid))
 
     return qemudisk(dbg, sr_uuid, vdi_uuid, vdi_type, p.pid, qmp_sock, nbd_sock, qmp_log)
 
 
 def introduce(dbg, qemudisk, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log):
-    log.debug("%s: qemudisk.introduce: sr_uuid: %s vdi_uuid: %s vdi_type: %s pid: %d qmp_sock: %s nbd_sock: %s qmp_log: %s"
-              % (dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log))
+    log.debug("%s: xcpng.qemudisk.introduce: sr_uuid: %s vdi_uuid: %s vdi_type: %s pid: %d qmp_sock: %s nbd_sock: %s "
+              "qmp_log: %s" % (dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log))
 
     return qemudisk(dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log)
 
 
 class Qemudisk(object):
     def __init__(self, dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log):
-        log.debug("%s: qemudisk.Qemudisk.__init__: sr_uuid: %s vdi_uuid: %s vdi_type: %s pid: %d qmp_sock: %s nbd_sock: %s qmp_log: %s"
+        log.debug("%s: xcpng.qemudisk.Qemudisk.__init__: sr_uuid: %s vdi_uuid: %s vdi_type: %s pid: %d qmp_sock: %s "
+                  "nbd_sock: %s qmp_log: %s"
                   % (dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log))
 
         self.vdi_uuid = vdi_uuid
@@ -79,10 +80,10 @@ class Qemudisk(object):
         qemu_params = '%s:%s:%s' % (self.vdi_uuid, ROOT_NODE_NAME, self.qmp_sock)
 
         self.params = "hack|%s|%s" % (self.params, qemu_params)
-        self._set_open_args_(dbg)
+        self._set_open_args(dbg)
 
-    def _set_open_args_(self, dbg):
-
+    def _set_open_args(self, dbg):
+        log.debug("%s: xcpng.qemudisk.Qemudisk._set_open_args" % dbg)
         self.open_args = {'driver': self.vdi_type,
                           'cache': {'direct': True, 'no-flush': True},
                           # 'discard': 'unmap',
@@ -93,23 +94,32 @@ class Qemudisk(object):
                           'node-name': ROOT_NODE_NAME}
 
     def quit(self, dbg):
-        log.debug("%s: qemudisk.Qemudisk.quit: vdi_uuid %s pid %d qmp_sock %s"
+        log.debug("%s: xcpng.qemudisk.Qemudisk.quit: vdi_uuid %s pid %d qmp_sock %s"
                   % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
         _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
-        _qmp_.connect()
-        _qmp_.command('quit')
-        _qmp_.close()
+        try:
+            _qmp_.connect()
+            _qmp_.command('quit')
+            _qmp_.close()
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.quit: Failed to destroy qemu_dp instance: pid %s" % (dbg, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)
 
     def open(self, dbg):
-        log.debug("%s: qemudisk.Qemudisk.open: vdi_uuid %s pid %d qmp_sock %s"
+        log.debug("%s: xcpng.qemudisk.Qemudisk.open: vdi_uuid %s pid %d qmp_sock %s"
                   % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
 
-        log.debug("%s: qemudisk.Qemudisk.open: args: %s" % (dbg, self.open_args))
+        log.debug("%s: xcpng.qemudisk.Qemudisk.open: args: %s" % (dbg, self.open_args))
 
         _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
-        _qmp_.connect()
 
         try:
+            _qmp_.connect()
+
             _qmp_.command("blockdev-add", **self.open_args)
 
             # Start an NBD server exposing this blockdev
@@ -118,111 +128,139 @@ class Qemudisk(object):
                                 'data': {'path': self.nbd_sock}})
             _qmp_.command("nbd-server-add",
                           device=ROOT_NODE_NAME, writable=True)
-            log.debug("%s: qemudisk.Qemudisk.open: Image opened: %s" % (dbg, self.open_args))
-        except Exception:
-            raise Volume_does_not_exist(self.vdi_uuid)
-        finally:
-            _qmp_.close()
+            log.debug("%s: xcpng.qemudisk.Qemudisk.open: Image opened: %s" % (dbg, self.open_args))
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.open: Failed to open image in qemu_dp instance: uuid: %s pid %s" %
+                      (dbg, self.vdi_uuid, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)
 
     def close(self, dbg):
-        log.debug("%s: qemudisk.Qemudisk.close: vdi_uuid %s pid %d qmp_sock %s"
+        log.debug("%s: xcpng.qemudisk.Qemudisk.close: vdi_uuid %s pid %d qmp_sock %s"
                   % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
 
         _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
-        _qmp_.connect()
 
-        if platform.linux_distribution()[1] == '7.5.0':
-            try:
-                path = "{}/{}".format(utils.VAR_RUN_PREFIX, self.vdi_uuid)
-                with open(path, 'r') as f:
-                    line = f.readline().strip()
-                call(["/usr/bin/xenstore-write", line, "5"])
-                os.unlink(path)
-            except Exception:
-                log.debug("%s: qemudisk.Qemudisk.close: There was no xenstore setup" % dbg)
-        elif platform.linux_distribution()[1] == '7.6.0':
-            path = "{}/{}".format(utils.VAR_RUN_PREFIX, self.vdi_uuid)
-            try:
-                with open(path, 'r') as f:
-                    line = f.readline().strip()
-                os.unlink(path)
-                args = {'type': 'qdisk',
-                        'domid': int(re.search('domain/(\d+)/',
-                                               line).group(1)),
-                        'devid': int(re.search('vbd/(\d+)/',
-                                               line).group(1))}
-                _qmp_.command(dbg, "xen-unwatch-device", **args)
-            except Exception:
-                log.debug("%s: qemudisk.Qemudisk.close: There was no xenstore setup" % dbg)
         try:
+            _qmp_.connect()
+
+            if platform.linux_distribution()[1] == '7.5.0':
+                try:
+                    path = "{}/{}".format(utils.VAR_RUN_PREFIX, self.vdi_uuid)
+                    with open(path, 'r') as f:
+                        line = f.readline().strip()
+                    utils.call(dbg, ["/usr/bin/xenstore-write", line, "5"])
+                    os.unlink(path)
+                except Exception:
+                    log.debug("%s: xcpng.qemudisk.Qemudisk.close: There was no xenstore setup" % dbg)
+            elif platform.linux_distribution()[1] == '7.6.0':
+                path = "{}/{}".format(utils.VAR_RUN_PREFIX, self.vdi_uuid)
+                try:
+                    with open(path, 'r') as f:
+                        line = f.readline().strip()
+                    os.unlink(path)
+                    args = {'type': 'qdisk',
+                            'domid': int(re.search('domain/(\d+)/',
+                                                   line).group(1)),
+                            'devid': int(re.search('vbd/(\d+)/',
+                                                   line).group(1))}
+                    _qmp_.command(dbg, "xen-unwatch-device", **args)
+                except Exception:
+                    log.debug("%s: xcpng.qemudisk.Qemudisk.close: There was no xenstore setup" % dbg)
+
             # Stop the NBD server
             _qmp_.command("nbd-server-stop")
             # Remove the block device
             args = {"node-name": ROOT_NODE_NAME}
             _qmp_.command("blockdev-del", **args)
-        except Exception:
-            raise Volume_does_not_exist(self.vdi_uuid)
-        finally:
-            _qmp_.close()
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.close: Failed to close image in qemu_dp instance: uuid: %s pid %s" %
+                      (dbg, self.vdi_uuid, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)
 
     def snap(self, dbg, snap_uri):
-        log.debug("%s: qemudisk.Qemudisk.snap: vdi_uuid %s pid %d qmp_sock %s snap_uri %s"
+        log.debug("%s: xcpng.qemudisk.Qemudisk.snap: vdi_uuid %s pid %d qmp_sock %s snap_uri %s"
                   % (dbg, self.vdi_uuid, self.pid, self.qmp_sock, snap_uri))
 
         if self.vdi_type != 'qcow2':
             raise Exception('Incorrect VDI type')
 
         _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
-        _qmp_.connect()
 
-        args = {'driver': 'qcow2',
-                'cache': {'direct': True, 'no-flush': True},
-                # 'discard': 'unmap',
+        try:
+            _qmp_.connect()
 
-                'file': {'driver': 'file',
-                         'aio': 'native',
-                         'filename': self.path},
-                         # 'node-name': RBD_NODE_NAME},
-                'node-name': SNAP_NODE_NAME,
-                'backing': ''}
+            args = {'driver': 'qcow2',
+                    'cache': {'direct': True, 'no-flush': True},
+                    # 'discard': 'unmap',
 
-        _qmp_.command('blockdev-add', **args)
+                    'file': {'driver': 'file',
+                             'aio': 'native',
+                             'filename': self.path},
+                             # 'node-name': RBD_NODE_NAME},
+                    'node-name': SNAP_NODE_NAME,
+                    'backing': ''}
 
-        args = {'node': ROOT_NODE_NAME,
-                'overlay': SNAP_NODE_NAME}
+            _qmp_.command('blockdev-add', **args)
 
-        _qmp_.command('blockdev-snapshot', **args)
+            args = {'node': ROOT_NODE_NAME,
+                    'overlay': SNAP_NODE_NAME}
 
-        _qmp_.close()
+            _qmp_.command('blockdev-snapshot', **args)
+
+            _qmp_.close()
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.snap: Failed to set backing file for image in qemu_dp instance: "
+                      "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)
 
     def suspend(self, dbg):
-        log.debug("%s: qemudisk.Qemudisk.suspend: vdi_uuid %s pid %d qmp_sock %s"
+        log.debug("%s: xcpng.qemudisk.Qemudisk.suspend: vdi_uuid %s pid %d qmp_sock %s"
                   % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
 
         _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
-        _qmp_.connect()
 
         try:
+            _qmp_.connect()
             # Suspend IO on blockdev
             args = {"device": ROOT_NODE_NAME}
             _qmp_.command("x-blockdev-suspend", **args)
-        except Exception:
-            raise Volume_does_not_exist(self.vdi_uuid)
-        finally:
-            _qmp_.close()
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.suspend: Failed to suspend IO for image in qemu_dp instance: "
+                      "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)
 
     def resume(self, dbg):
-        log.debug("%s: qemudisk.Qemudisk.resume: vdi_uuid %s pid %d qmp_sock %s"
+        log.debug("%s: xcpng.qemudisk.Qemudisk.resume: vdi_uuid %s pid %d qmp_sock %s"
                   % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
 
         _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
-        _qmp_.connect()
 
         try:
+            _qmp_.connect()
             # Resume IO on blockdev
             args = {"device": ROOT_NODE_NAME}
             _qmp_.command("x-blockdev-resume", **args)
-        except Exception:
-            raise Volume_does_not_exist(self.vdi_uuid)
-        finally:
-            _qmp_.close()
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.resume: Failed to resume IO for image in qemu_dp instance: "
+                      "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)
