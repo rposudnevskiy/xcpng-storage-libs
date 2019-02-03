@@ -350,29 +350,29 @@ class QCOW2Volume(RAWVolume):
                 # swap base and new base
                 self.VolOpsHendler.swap(dbg, base_meta[URI_TAG][0], new_base_meta[URI_TAG][0])
 
-                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG][0])
-                self.Datapathes[datapath].map_vol(dbg, base_meta[URI_TAG][0])
+                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG][0], chained=None)
+                self.Datapathes[datapath].map_vol(dbg, base_meta[URI_TAG][0], chained=None)
 
                 call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
                            "rebase",
                            "-u",
                            "-f", base_meta[TYPE_TAG],
                            "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG][0]),
-                           self.Datapathes[datapath].gen_vol_path(dbg, base_meta[URI_TAG][0])])
+                           self.Datapathes[datapath].gen_vol_uri(dbg, base_meta[URI_TAG][0])])
 
                 call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
                            "rebase",
                            "-u",
                            "-f", clone_meta[TYPE_TAG],
                            "-b", self.Datapathes[datapath].gen_vol_uri(dbg, new_base_meta[URI_TAG][0]),
-                           self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG][0])])
+                           self.Datapathes[datapath].gen_vol_uri(dbg, clone_meta[URI_TAG][0])])
 
-                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG][0])
+                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG][0], chained=None)
 
                 if ACTIVE_ON_TAG in base_meta:
                     self.Datapathes[datapath].snapshot(dbg, new_base_meta[URI_TAG][0], base_meta[URI_TAG][0], 0)
                 else:
-                    self.Datapathes[datapath].unmap_vol(dbg, base_meta[URI_TAG][0])
+                    self.Datapathes[datapath].unmap_vol(dbg, base_meta[URI_TAG][0], chained=None)
 
             else:
                 # create clone
@@ -383,16 +383,16 @@ class QCOW2Volume(RAWVolume):
                                          base_meta[VIRTUAL_SIZE_TAG],
                                          base_meta[SHARABLE_TAG])
 
-                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG][0])
+                self.Datapathes[datapath].map_vol(dbg, clone_meta[URI_TAG][0], chained=None)
 
                 call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
                            "rebase",
                            "-u",
                            "-f", base_meta[TYPE_TAG],
                            "-b", self.Datapathes[datapath].gen_vol_uri(dbg, base_meta[URI_TAG][0]),
-                           self.Datapathes[datapath].gen_vol_path(dbg, clone_meta[URI_TAG][0])])
+                           self.Datapathes[datapath].gen_vol_uri(dbg, clone_meta[URI_TAG][0])])
 
-                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG][0])
+                self.Datapathes[datapath].unmap_vol(dbg, clone_meta[URI_TAG][0], chained=None)
 
                 clone_parent = base_meta[URI_TAG]
 

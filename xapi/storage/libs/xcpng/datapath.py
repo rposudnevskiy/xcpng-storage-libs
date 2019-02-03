@@ -39,7 +39,7 @@ class Datapath(object):
             try:
                 image_meta = self.MetadataHandler.load(dbg, uri)
 
-                if chained:
+                if chained is True:
                     if PARENT_URI_TAG in image_meta:
                         self.map_vol(dbg, image_meta[PARENT_URI_TAG][0], chained)
 
