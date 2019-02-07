@@ -32,7 +32,6 @@ SNAPSHOT_OF_TAG = 'snapshot_of'
 IS_A_SNAPSHOT_TAG = 'is_a_snapshot'
 IMAGE_FORMAT_TAG = 'image-format'
 DATAPATH_TAG = 'datapath'
-CEPH_CLUSTER_TAG = 'cluster'
 PARENT_URI_TAG = 'parent'
 REF_COUNT_TAG = 'ref_count'
 
@@ -62,7 +61,6 @@ TAG_TYPES = {
     SNAPSHOT_OF_TAG: str,
     IMAGE_FORMAT_TAG: str,
     DATAPATH_TAG: str,
-    CEPH_CLUSTER_TAG: str,
     PARENT_URI_TAG: str,
     REF_COUNT_TAG: int
 }
@@ -164,13 +162,19 @@ class MetadataHandler(object):
         try:
             db = self.MetaDBOpsHendler.load(dbg, uri)
             table = db.table(table_name)
-            return table.search(where(uuid_tag) == uuid)[0]
+
+            if uuid_tag == SR_UUID_TAG and uuid == '12345678-1234-1234-1234-123456789012':
+                meta = table.all()[0]
+            else:
+                meta = table.search(where(uuid_tag) == uuid)[0]
+
+            return meta
         except Exception as e:
-            log.error("%s: xcpng.meta.MetadataHandler.remove: Failed to load metadata for uri: %s " % (dbg, uri))
+            log.error("%s: xcpng.meta.MetadataHandler.load: Failed to load metadata for uri: %s " % (dbg, uri))
             raise Exception(e)
 
     def update(self, dbg, uri, image_meta):
-        log.debug("%s: xcpng.meta.MetadataHandler.update: uri: %s " % (dbg, uri))
+        log.debug("%s: xcpng.meta.MetadataHandler.update: uri: %s" % (dbg, uri))
 
         sr_uuid = get_sr_uuid_by_uri(dbg, uri)
         vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
