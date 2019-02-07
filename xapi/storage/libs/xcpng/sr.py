@@ -10,7 +10,7 @@ from xapi.storage.libs.xcpng.meta import IMAGE_FORMAT_TAG, SR_UUID_TAG, CONFIGUR
                                          DATAPATH_TAG, UUID_TAG, KEY_TAG, READ_WRITE_TAG, VIRTUAL_SIZE_TAG, \
                                          PHYSICAL_UTILISATION_TAG, URI_TAG, CUSTOM_KEYS_TAG, SHARABLE_TAG, \
                                          MetadataHandler
-from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_sr_uuid_by_name, get_sr_uuid_by_uri, get_vdi_uuid_by_name
+from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_known_srs, get_sr_uuid_by_uri, get_vdi_uuid_by_name
 
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import SR_skeleton
@@ -86,11 +86,12 @@ class SR(object):
 
         _uri_ = self.SROpsHendler.extend_uri(dbg, _uri_, configuration)
 
-        uri = "%s%s" % (_uri_, configuration[SR_UUID_TAG]) if SR_UUID_TAG in configuration else _uri_
+        uri = "%s/%s" % (_uri_, configuration[SR_UUID_TAG]) if SR_UUID_TAG in configuration else _uri_
 
         log.debug("{}: xcpng.sr.SR.probe: uri to probe: {}".format(dbg, uri))
 
         result = []
+        known_srs = get_known_srs()
 
         try:
             srs = self.SROpsHendler.get_sr_list(dbg, uri, configuration)
@@ -98,76 +99,91 @@ class SR(object):
             log.debug("%s: xcpng.sr.SR.probe: Available Pools" % dbg)
             log.debug("%s: xcpng.sr.SR.probe: ---------------------------------------------------" % dbg)
 
-            for sr_name in srs:
-                log.debug("%s: xcpng.sr.SR.probe: %s" % (dbg, sr_name))
+            for _sr_ in srs:
+                sr_uuid = get_sr_uuid_by_uri(dbg, _sr_)
+                if sr_uuid not in known_srs:
+                    sr_found = True
 
-                sr_uuid = get_sr_uuid_by_name(dbg, sr_name)
+                    log.debug("%s: xcpng.sr.SR.probe: %s" % (dbg, _sr_))
 
-                self.SROpsHendler.sr_import(dbg, "%s%s" % (_uri_, sr_uuid), configuration)
-                sr_meta = self.MetadataHandler.load(dbg, "%s%s" % (_uri_, sr_uuid))
+                    configuration['mountpoint'] = "%s/%s" % (SR_PATH_PREFIX, sr_uuid)
 
-                if (IMAGE_FORMAT_TAG in configuration and
-                    ((CONFIGURATION_TAG in sr_meta and
-                      IMAGE_FORMAT_TAG in sr_meta[CONFIGURATION_TAG] and
-                      configuration[IMAGE_FORMAT_TAG] != sr_meta[CONFIGURATION_TAG][IMAGE_FORMAT_TAG]) or
-                     (CONFIGURATION_TAG in sr_meta and
-                      IMAGE_FORMAT_TAG not in sr_meta[CONFIGURATION_TAG]) or
-                     CONFIGURATION_TAG not in sr_meta)):
-                    sr_name = None
+                    try:
+                        self.SROpsHendler.sr_import(dbg, _sr_, configuration)
+                        sr_meta = self.MetadataHandler.load(dbg, _sr_)
+                    except Exception:
+                        try:
+                            self.SROpsHendler.sr_export(dbg, _sr_)
+                        except:
+                            pass
+                        break
 
-                if (DATAPATH_TAG in configuration and
-                    ((CONFIGURATION_TAG in sr_meta and
-                      DATAPATH_TAG in sr_meta[CONFIGURATION_TAG] and
-                      configuration[DATAPATH_TAG] != sr_meta[CONFIGURATION_TAG][DATAPATH_TAG]) or
-                     (CONFIGURATION_TAG in sr_meta and
-                      DATAPATH_TAG not in sr_meta[CONFIGURATION_TAG]) or
-                     CONFIGURATION_TAG not in sr_meta)):
-                    sr_name = None
+                    if (IMAGE_FORMAT_TAG in configuration and
+                            ((CONFIGURATION_TAG in sr_meta and
+                              IMAGE_FORMAT_TAG in sr_meta[CONFIGURATION_TAG] and
+                              configuration[IMAGE_FORMAT_TAG] != sr_meta[CONFIGURATION_TAG][IMAGE_FORMAT_TAG]) or
+                             (CONFIGURATION_TAG in sr_meta and
+                              IMAGE_FORMAT_TAG not in sr_meta[CONFIGURATION_TAG]) or
+                             CONFIGURATION_TAG not in sr_meta)):
+                        sr_found = False
 
-                if (SR_UUID_TAG in configuration and
-                    ((CONFIGURATION_TAG in sr_meta and
-                      SR_UUID_TAG in sr_meta[CONFIGURATION_TAG] and
-                      configuration[SR_UUID_TAG] != sr_meta[CONFIGURATION_TAG][SR_UUID_TAG]) or
-                     (CONFIGURATION_TAG in sr_meta and
-                      SR_UUID_TAG not in sr_meta[CONFIGURATION_TAG] and
-                      SR_UUID_TAG in sr_meta and
-                      configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
-                     (CONFIGURATION_TAG not in sr_meta and
-                      SR_UUID_TAG in sr_meta and
-                      configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
-                     SR_UUID_TAG not in sr_meta)):
-                    sr_name = None
+                    if (DATAPATH_TAG in configuration and
+                            ((CONFIGURATION_TAG in sr_meta and
+                              DATAPATH_TAG in sr_meta[CONFIGURATION_TAG] and
+                              configuration[DATAPATH_TAG] != sr_meta[CONFIGURATION_TAG][DATAPATH_TAG]) or
+                             (CONFIGURATION_TAG in sr_meta and
+                              DATAPATH_TAG not in sr_meta[CONFIGURATION_TAG]) or
+                             CONFIGURATION_TAG not in sr_meta)):
+                        sr_found = False
 
-                if SR_UUID_TAG not in sr_meta:
-                    sr_name = None
+                    if (SR_UUID_TAG in configuration and
+                            ((CONFIGURATION_TAG in sr_meta and
+                              SR_UUID_TAG in sr_meta[CONFIGURATION_TAG] and
+                              configuration[SR_UUID_TAG] != sr_meta[CONFIGURATION_TAG][SR_UUID_TAG]) or
+                             (CONFIGURATION_TAG in sr_meta and
+                              SR_UUID_TAG not in sr_meta[CONFIGURATION_TAG] and
+                              SR_UUID_TAG in sr_meta and
+                              configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
+                             (CONFIGURATION_TAG not in sr_meta and
+                              SR_UUID_TAG in sr_meta and
+                              configuration[SR_UUID_TAG] != sr_meta[SR_UUID_TAG]) or
+                             SR_UUID_TAG not in sr_meta)):
+                        sr_found = False
 
-                if sr_name is not None:
-                    _result_ = {}
-                    _result_['complete'] = True
-                    _result_['configuration'] = {}
-                    _result_['configuration'] = deepcopy(configuration)
-                    _result_['extra_info'] = {}
+                    if SR_UUID_TAG in sr_meta and sr_meta[SR_UUID_TAG] in known_srs:
+                        sr_found = False
 
-                    sr = {}
-                    sr['sr'] = "%s%s" % (_uri_, sr_meta[SR_UUID_TAG])
-                    sr['name'] = sr_meta[NAME_TAG] if NAME_TAG in sr_meta \
-                                                   else self.SROpsHendler.DEFAULT_SR_NAME
-                    sr['description'] = sr_meta[DESCRIPTION_TAG] if DESCRIPTION_TAG in sr_meta \
-                                                                 else self.SROpsHendler.DEFAULT_SR_DESCRIPTION
-                    sr['free_space'] = self.SROpsHendler.get_free_space(dbg, "%s%s" % (_uri_, sr_uuid))
-                    sr['total_space'] = self.SROpsHendler.get_size(dbg, "%s%s" % (_uri_, sr_uuid))
-                    sr['datasources'] = self.SROpsHendler.get_datasources(dbg, "%s%s" % (_uri_, sr_uuid))
-                    sr['clustered'] = self.SROpsHendler.get_clustered(dbg, "%s%s" % (_uri_, sr_uuid))
-                    sr['health'] = self.SROpsHendler.get_health(dbg, "%s%s" % (_uri_, sr_uuid))
+                    if SR_UUID_TAG not in sr_meta:
+                        sr_found = False
 
-                    _result_['sr'] = sr
-                    _result_['configuration']['sr_uuid'] = sr_meta[SR_UUID_TAG]
+                    if sr_found:
+                        _result_ = {}
+                        _result_['complete'] = True
+                        _result_['configuration'] = {}
+                        _result_['configuration'] = deepcopy(sr_meta[CONFIGURATION_TAG])
+                        # _result_['configuration'] = deepcopy(configuration)
+                        _result_['extra_info'] = {}
 
-                    result.append(_result_)
+                        sr = {}
+                        sr['sr'] = _sr_
+                        sr['name'] = sr_meta[NAME_TAG] if NAME_TAG in sr_meta \
+                            else self.SROpsHendler.DEFAULT_SR_NAME
+                        sr['description'] = sr_meta[DESCRIPTION_TAG] if DESCRIPTION_TAG in sr_meta \
+                            else self.SROpsHendler.DEFAULT_SR_DESCRIPTION
+                        sr['free_space'] = self.SROpsHendler.get_free_space(dbg, _sr_)
+                        sr['total_space'] = self.SROpsHendler.get_size(dbg, _sr_)
+                        sr['datasources'] = self.SROpsHendler.get_datasources(dbg, _sr_)
+                        sr['clustered'] = self.SROpsHendler.get_clustered(dbg, _sr_)
+                        sr['health'] = self.SROpsHendler.get_health(dbg, _sr_)
 
-                self.SROpsHendler.sr_export(dbg, "%s%s" % (_uri_, sr_uuid))
+                        _result_['sr'] = sr
+                        # _result_['configuration']['sr_uuid'] = sr_meta[SR_UUID_TAG]
+
+                        result.append(_result_)
+
+                        self.SROpsHendler.sr_export(dbg, _sr_)
         except Exception as e:
-            log.error("%s: xcpng.sr.SR.probe: Failed to prope SRs for configuration: %s" % (dbg, configuration))
+            log.error("%s: xcpng.sr.SR.probe: Failed to probe SRs for configuration: %s" % (dbg, configuration))
             raise Exception(e)
 
         return result
@@ -184,8 +200,9 @@ class SR(object):
             uri = "%s://" % self.sr_type
 
         uri = self.SROpsHendler.extend_uri(dbg, uri, configuration)
+        uri = "%s/%s" % (uri, sr_uuid)
 
-        uri = "%s%s" % (uri, sr_uuid)
+        log.debug("%s: xcpng.sr.SR.create: uri %s" % (dbg, uri))
 
         configuration['mountpoint'] = "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))
 
@@ -200,7 +217,8 @@ class SR(object):
                 SR_UUID_TAG: sr_uuid,
                 NAME_TAG: name,
                 DESCRIPTION_TAG: description,
-                CONFIGURATION_TAG: json.dumps(configuration)
+                #CONFIGURATION_TAG: json.dumps(configuration)
+                CONFIGURATION_TAG: configuration
             }
 
             self.MetadataHandler.update(dbg, uri, pool_meta)
@@ -240,7 +258,10 @@ class SR(object):
             uri = "%s://" % self.sr_type
 
         uri = self.SROpsHendler.extend_uri(dbg, uri, configuration)
-        uri = "%s%s" % (uri, configuration[SR_UUID_TAG]) if SR_UUID_TAG in configuration else uri
+        uri = "%s/%s" % (uri, configuration[SR_UUID_TAG]) if SR_UUID_TAG in configuration else uri
+
+        log.debug("%s: xcpng.sr.SR.attach: uri: %s" % (dbg, uri))
+
         configuration['mountpoint'] = "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))
 
         try:
