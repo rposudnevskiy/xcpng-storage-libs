@@ -89,6 +89,7 @@ class Volume(object):
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.create: Failed to create volume: key %s: SR: %s" % (dbg, vdi_uuid, sr))
             try:
+                self.destroy(dbg, sr, vdi_uuid)
                 self.MetadataHandler.remove(dbg, vdi_uri)
             except:
                 pass
