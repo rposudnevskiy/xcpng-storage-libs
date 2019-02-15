@@ -95,6 +95,9 @@ def merge(src, dst, pattern):
 
 class MetaDBOperations(object):
 
+    def create(self, dbg, uri):
+        raise NotImplementedError('Override in MetaDBOperations specific class')
+
     def destroy(self, dbg, uri):
         raise NotImplementedError('Override in MetaDBOperations specific class')
 
@@ -153,7 +156,7 @@ class MetadataHandler(object):
     def create(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.create: uri: %s " % (dbg, uri))
         try:
-            self.__dump(dbg, uri)
+            self.MetaDBOpsHandler.create(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.create: Failed to create metadata database: uri: %s " % (dbg, uri))
             raise Exception(e)
