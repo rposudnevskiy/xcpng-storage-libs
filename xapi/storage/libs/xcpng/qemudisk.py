@@ -93,14 +93,15 @@ class Qemudisk(object):
         log.debug("%s: xcpng.qemudisk.Qemudisk.parse_image_uri: vdi_uuid %s uri %s"
                   % (dbg, self.vdi_uuid, self.img_uri))
 
-        driver, path = self.img_uri.split(':')
+        driver, path, conf = self.img_uri.split(':')
         if driver == 'file':
             # file:/tmp/test.qcow2
             file = {'driver': 'file', 'filename':  path}
         elif driver == 'rbd':
-            # rbd:pool/image
+            # rbd:pool/image:conf=/etc/ceph/ceph.conf
             pool, image = path.split('/')
-            file = {'driver': 'rbd', 'pool': pool, 'image': image}
+            opt, file_name = conf.split('=')
+            file = {'driver': 'rbd', 'pool': pool, 'image': image, 'conf': file_name}
         elif driver == 'sheepdog':
             # sheepdog+unix:///vdi?socket=socket_path
             vdi, socket_def = path.split('?')
