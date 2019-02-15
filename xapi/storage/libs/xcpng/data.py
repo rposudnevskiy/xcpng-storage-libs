@@ -1,17 +1,33 @@
 #!/usr/bin/env python
 
+import xapi.storage.libs.xcpng.globalvars
 from xapi.storage import log
 
 from xapi.storage.libs.xcpng.meta import MetadataHandler
 from xapi.storage.libs.xcpng.qemudisk import Qemudisk
+from xapi.storage.libs.xcpng.utils import module_exists
 
 from xapi.storage.api.v5.datapath import Data_skeleton
+
+
+class DataOperations(object):
+
+    def __init__(self):
+        self.MetadataHandler = MetadataHandler()
+
+
+plugin_specific_data = module_exists("xapi.storage.libs.xcpng.lib%s.data" % xapi.storage.libs.xcpng.globalvars.plugin_type)
+if plugin_specific_data:
+    _DataOperations_ = getattr(plugin_specific_data, 'VolumeOperations')
+else:
+    _DataOperations_ = DataOperations
 
 
 class Data(object):
 
     def __init__(self):
-        self.MetadataHandler = MetadataHandler
+        self.MetadataHandler = MetadataHandler()
+        self.DataOpsHandler = _DataOperations_()
 
     def _copy(self, dbg, uri, domain, remote, blocklist):
         raise NotImplementedError('Override in Data specifc class')

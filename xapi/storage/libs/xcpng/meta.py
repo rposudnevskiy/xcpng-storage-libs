@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 
+import xapi.storage.libs.xcpng.globalvars
+import atexit
+
 from tinydb import TinyDB, Query, where
 from tinydb.operations import delete
+from tinydb.storages import MemoryStorage
+from json import dumps, loads
 
 from xapi.storage import log
-from xapi.storage.libs.xcpng.utils import get_sr_uuid_by_uri, get_vdi_uuid_by_uri
+from xapi.storage.libs.xcpng.utils import get_sr_uuid_by_uri, get_vdi_uuid_by_uri, module_exists
 
 # define tags for metadata
-UUID_TAG = 'uuid'
+VDI_UUID_TAG = 'uuid'
+IMAGE_UUID_TAG = 'image_uuid'
 SR_UUID_TAG = 'sr_uuid'
 TYPE_TAG = 'vdi_type'
 KEY_TAG = 'key'
@@ -27,6 +33,7 @@ QEMU_PID_TAG = 'qemu_pid'
 QEMU_QMP_SOCK_TAG = 'qemu_qmp_sock'
 QEMU_NBD_SOCK_TAG = 'qemu_nbd_sock'
 QEMU_QMP_LOG_TAG = 'qemu_qmp_log'
+QEMU_IMAGE_URI_TAG = 'qemu_img_uri'
 ACTIVE_ON_TAG = 'active_on'
 SNAPSHOT_OF_TAG = 'snapshot_of'
 IS_A_SNAPSHOT_TAG = 'is_a_snapshot'
@@ -37,7 +44,8 @@ REF_COUNT_TAG = 'ref_count'
 
 # define tag types
 TAG_TYPES = {
-    UUID_TAG: str,
+    VDI_UUID_TAG: str,
+    IMAGE_UUID_TAG: str,
     SR_UUID_TAG: str,
     TYPE_TAG: str,
     KEY_TAG: str,
@@ -57,6 +65,7 @@ TAG_TYPES = {
     QEMU_QMP_SOCK_TAG: str,
     QEMU_NBD_SOCK_TAG: str,
     QEMU_QMP_LOG_TAG: str,
+    QEMU_IMAGE_URI_TAG: str,
     ACTIVE_ON_TAG: str,
     SNAPSHOT_OF_TAG: str,
     IMAGE_FORMAT_TAG: str,
@@ -67,19 +76,24 @@ TAG_TYPES = {
 
 
 snap_merge_pattern = (CUSTOM_KEYS_TAG,
-                      PHYSICAL_UTILISATION_TAG)
+                      PHYSICAL_UTILISATION_TAG,
+                      PARENT_URI_TAG,
+                      REF_COUNT_TAG)
 
+clone_merge_pattern = (CUSTOM_KEYS_TAG,
+                      PHYSICAL_UTILISATION_TAG,
+                      PARENT_URI_TAG)
 
 def merge(src, dst, pattern):
     for key in pattern:
         if key in src:
             dst[key] = src[key]
+        else:
+            if key in dst:
+                dst[key] = None
 
 
 class MetaDBOperations(object):
-
-    def create(self, dbg, uri):
-        raise NotImplementedError('Override in MetaDBOperations specific class')
 
     def destroy(self, dbg, uri):
         raise NotImplementedError('Override in MetaDBOperations specific class')
@@ -97,15 +111,49 @@ class MetaDBOperations(object):
         raise NotImplementedError('Override in MetaDBOperations specific class')
 
 
+plugin_specific_meta = module_exists("xapi.storage.libs.xcpng.lib%s.meta" % xapi.storage.libs.xcpng.globalvars.plugin_type)
+if plugin_specific_meta:
+    _MetaDBOperations_ = getattr(plugin_specific_meta, 'MetaDBOperations')
+else:
+    _MetaDBOperations_ = MetaDBOperations
+
+
 class MetadataHandler(object):
 
+    def __new__(cls, *args, **kwargs):
+        if not hasattr(cls,'_inst'):
+            cls._inst = super(MetadataHandler, cls).__new__(cls, *args, **kwargs)
+        else:
+            def init_pass(self, *dt, **mp): pass
+            cls.__init__ = init_pass
+
+        log.debug("xcpng.meta.MetadataHandler.__new___: %s : %s " % (cls, cls._inst))
+        return cls._inst
+
     def __init__(self):
-        self.MetaDBOpsHendler = MetaDBOperations()
+        log.debug("xcpng.meta.MetadataHandler.__init___")
+        self.db = TinyDB(storage=MemoryStorage, default_table='sr')
+        self.__loaded = False
+        self.__locked = False
+        self.__updated = False
+        self.__uri = None
+        self.__dbg = None
+
+        self.MetaDBOpsHandler = _MetaDBOperations_()
+
+        atexit.register(self.__on_exit)
+
+    def __on_exit(self):
+        log.debug("xcpng.meta.MetadataHandler.__on_exit")
+        if self.__updated:
+            self.__dump(self.__dbg, self.__uri)
+        if self.__locked:
+            self.unlock(self.__dbg, self.__uri)
 
     def create(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.create: uri: %s " % (dbg, uri))
         try:
-            self.MetaDBOpsHendler.create(dbg, uri)
+            self.__dump(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.create: Failed to create metadata database: uri: %s " % (dbg, uri))
             raise Exception(e)
@@ -113,123 +161,224 @@ class MetadataHandler(object):
     def destroy(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.destroy: uri: %s " % (dbg, uri))
         try:
-            self.MetaDBOpsHendler.destroy(dbg, uri)
+            self.MetaDBOpsHandler.destroy(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.destroy: Failed to destroy metadata database: uri: %s " % (dbg, uri))
             raise Exception(e)
 
-    def remove(self, dbg, uri):
-        log.debug("%s: xcpng.meta.MetadataHandler.remove: uri: %s " % (dbg, uri))
-
-        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
-        vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
-
-        if vdi_uuid != '':
-            table_name = 'vdis'
-            uuid_tag = UUID_TAG
-            uuid = vdi_uuid
-        else:
-            table_name = 'sr'
-            uuid_tag = SR_UUID_TAG
-            uuid = sr_uuid
-
+    def __load(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.__load: uri: %s " % (dbg, uri))
+        self.__uri = uri
+        self.__dbg = uri
         try:
-            self.MetaDBOpsHendler.lock(dbg, uri)
-            db = self.MetaDBOpsHendler.load(dbg, uri)
-            table = db.table(table_name)
-            table.remove(where(uuid_tag) == uuid)
-            self.MetaDBOpsHendler.dump(dbg, uri, db)
-            self.MetaDBOpsHendler.unlock(dbg, uri)
+            self.db._storage.write(loads(self.MetaDBOpsHandler.load(dbg, uri)))
+            self.__loaded = True
         except Exception as e:
-            log.error("%s: xcpng.meta.MetadataHandler.remove: Failed to remove metadata for uri: %s " % (dbg, uri))
+            log.error("%s: xcpng.meta.MetadataHandler.load: Failed to load metadata" % dbg)
             raise Exception(e)
 
     def load(self, dbg, uri):
-        log.debug("%s: xcpng.meta.MetadataHandler.load: uri: %s " % (dbg, uri))
+        self.__load(dbg, uri)
 
-        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
+    def __dump(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.__dump: uri: %s " % (dbg, uri))
+        try:
+            self.MetaDBOpsHandler.dump(dbg, uri, dumps(self.db._storage.read()))
+            self.__updated = False
+        except Exception as e:
+            log.error("%s: xcpng.meta.MetadataHandler.__dump: Failed to dump metadata" % dbg)
+            raise Exception(e)
+
+    def dump(self, dbg, uri):
+        self.__dump(dbg, uri)
+
+    def lock(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.lock: uri: %s " % (dbg, uri))
+        try:
+            self.MetaDBOpsHandler.lock(dbg, uri)
+        except Exception as e:
+            log.error("%s: xcpng.meta.MetadataHandler.lock: Failed to lock metadata DB" % dbg)
+            raise Exception(e)
+
+    def unlock(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.unlock: uri: %s " % (dbg, uri))
+        try:
+            self.MetaDBOpsHandler.unlock(dbg, uri)
+        except Exception as e:
+            log.error("%s: xcpng.meta.MetadataHandler.unlock: Failed to unlock metadata DB" % dbg)
+            raise Exception(e)
+
+    def update_vdi_meta(self, dbg, uri, meta):
+        log.debug("%s: xcpng.meta.MetadataHandler.update_vdi_meta: uri: %s " % (dbg, uri))
+
+        if self.__loaded is False:
+            self.__load(dbg, uri)
+
         vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
 
-        if vdi_uuid != '':
-            table_name = 'vdis'
-            uuid_tag = UUID_TAG
-            uuid = vdi_uuid
-        else:
-            table_name = 'sr'
+        if vdi_uuid == '':
+            raise('Incorrect VDI uri')
+
+        self.__update(dbg, vdi_uuid, 'vdis', meta)
+
+    def update_sr_meta(self, dbg, uri, meta):
+        log.debug("%s: xcpng.meta.MetadataHandler.update_vdi_meta: uri: %s " % (dbg, uri))
+
+        if self.__loaded is False:
+            self.__load(dbg, uri)
+
+        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
+
+        if sr_uuid == '':
+            raise Exception('Incorrect SR uri')
+
+        self.__update(dbg, sr_uuid, 'sr', meta)
+
+    def __update(self, dbg, uuid, table_name, meta):
+        log.debug("%s: xcpng.meta.MetadataHandler.__update: uuid: %s table_name: %s meta: %s"
+                  % (dbg, uuid, table_name, meta))
+
+        if table_name == 'sr':
             uuid_tag = SR_UUID_TAG
-            uuid = sr_uuid
+        elif table_name == 'vdis':
+            uuid_tag = VDI_UUID_TAG
+        else:
+            raise Exception('Incorrect table name')
+
+        table = self.db.table(table_name)
 
         try:
-            db = self.MetaDBOpsHendler.load(dbg, uri)
-            table = db.table(table_name)
+            if table.contains(Query()[uuid_tag] == uuid):
+                for tag, value in meta.iteritems():
+                    if value is None:
+                        log.debug("%s: xcpng.meta.MetadataHandler.__update: tag: %s remove value" % (dbg, tag))
+                        table.update(delete(tag), Query()[uuid_tag] == uuid)
+                    else:
+                        log.debug("%s: xcpng.meta.MetadataHandler.__update: tag: %s set value: %s" % (dbg, tag, value))
+                        table.update({tag: value}, Query()[uuid_tag] == uuid)
+            else:
+                table.insert(meta)
+            self.__updated = True
+        except Exception as e:
+            log.error("%s: xcpng.meta.MetadataHandler._update: Failed to update metadata" % dbg)
+            raise Exception(e)
 
+    def remove_vdi_meta(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.remove_vdi_meta: uri: %s " % (dbg, uri))
+
+        if self.__loaded is False:
+            self.__load(dbg, uri)
+
+        vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
+
+        if vdi_uuid == '':
+            raise('Incorrect VDI uri')
+
+        self.__remove(dbg, vdi_uuid, 'vdis')
+
+    def __remove(self, dbg, uuid, table_name):
+        log.debug("%s: xcpng.meta.MetadataHandler.__remove: uuid: %s table_name: %s" % (dbg, uuid, table_name))
+
+        if table_name == 'sr':
+            uuid_tag = SR_UUID_TAG
+        elif table_name == 'vdis':
+            uuid_tag = VDI_UUID_TAG
+        else:
+            raise Exception('Incorrect table name')
+
+        table = self.db.table(table_name)
+
+        try:
+            table.remove(where(uuid_tag) == uuid)
+            self.__updated = True
+        except Exception as e:
+            log.error("%s: xcpng.meta.MetadataHandler._remove: Failed to remove metadata" % dbg)
+            raise Exception(e)
+
+    def get_vdi_meta(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.get_vdi_meta: uri: %s " % (dbg, uri))
+
+        if self.__loaded is False:
+            self.__load(dbg, uri)
+
+        vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
+
+        if vdi_uuid == '':
+            raise('Incorrect VDI uri')
+
+        return self.__get_meta(dbg, vdi_uuid, 'vdis')
+
+    def get_sr_meta(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.get_sr_meta: uri: %s " % (dbg, uri))
+
+        if self.__loaded is False:
+            self.__load(dbg, uri)
+
+        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
+
+        if sr_uuid == '':
+            raise Exception('Incorrect SR uri')
+
+        return self.__get_meta(dbg, sr_uuid, 'sr')
+
+    def __get_meta(self, dbg, uuid, table_name):
+        log.debug("%s: xcpng.meta.MetadataHandler.__get_meta: uuid: %s table_name: %s" % (dbg, uuid, table_name))
+
+        if table_name == 'sr':
+            uuid_tag = SR_UUID_TAG
+        elif table_name == 'vdis':
+            uuid_tag = VDI_UUID_TAG
+        else:
+            raise Exception('Incorrect table name')
+
+        table = self.db.table(table_name)
+        try:
             if uuid_tag == SR_UUID_TAG and uuid == '12345678-1234-1234-1234-123456789012':
                 meta = table.all()[0]
             else:
                 meta = table.search(where(uuid_tag) == uuid)[0]
-
             return meta
         except Exception as e:
-            log.error("%s: xcpng.meta.MetadataHandler.load: Failed to load metadata for uri: %s " % (dbg, uri))
+            log.error("%s: xcpng.meta.MetadataHandler.__get_meta: Failed to get metadata" % dbg)
             raise Exception(e)
 
-    def update(self, dbg, uri, image_meta):
-        log.debug("%s: xcpng.meta.MetadataHandler.update: uri: %s" % (dbg, uri))
+    def find_vdi_children(self, dbg, uri):
+        log.debug("%s: xcpng.meta.MetadataHandler.find_vdi_children: uri: %s" % (dbg, uri))
 
-        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
-        vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
-
-        if vdi_uuid != '':
-            table_name = 'vdis'
-            uuid_tag = UUID_TAG
-            uuid = vdi_uuid
-        else:
-            table_name = 'sr'
-            uuid_tag = SR_UUID_TAG
-            uuid = sr_uuid
+        if self.__loaded is False:
+            self.__load(dbg, uri)
 
         try:
-            self.MetaDBOpsHendler.lock(dbg, uri)
-            db = self.MetaDBOpsHendler.load(dbg, uri)
-            table = db.table(table_name)
-
-            if table.search(Query()[uuid_tag] == uuid):
-                for tag, value in image_meta.iteritems():
-                    if value is None:
-                        log.debug("%s: xcpng.meta.MetadataHandler._update_meta: tag: %s remove value" % (dbg, tag))
-                        table.update(delete(tag), Query()[uuid_tag] == uuid)
-                    else:
-                        log.debug("%s: xcpng.meta.MetadataHandler._update_meta: tag: %s set value: %s" % (dbg, tag, value))
-                        table.update({tag: value}, Query()[uuid_tag] == uuid)
-            else:
-                table.insert(image_meta)
-
-            self.MetaDBOpsHendler.dump(dbg, uri, db)
-            self.MetaDBOpsHendler.unlock(dbg, uri)
+            table = self.db.table('vdis')
+            return table.search(where(PARENT_URI_TAG) == get_vdi_uuid_by_uri(dbg, uri))
         except Exception as e:
-            log.error("%s: xcpng.meta.MetadataHandler.update: Failed to update metadata for uri: %s " % (dbg, uri))
+            log.error("%s: xcpng.meta.MetadataHandler.find_vdi_children: Failed to find "
+                      "children for uri: %s " % (dbg, uri))
             raise Exception(e)
 
-    def get_vdi_chain(self, dbg, uri):
-        log.debug("%s: xcpng.meta.MetadataHandler.get_vdi_chain: uri: %s" % (dbg, uri))
+    def find_coalesceable_pairs(self, dbg, sr):
+        log.debug("%s: xcpng.meta.MetadataHandler.find_coalesceable pairs: sr: %s" % (dbg, sr))
 
-        vdi_chain = []
-        vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
+        if self.__loaded is False:
+            self.__load(dbg, sr)
+
+        pairs = []
+
+        table = self.db.table('vdis')
 
         try:
-            db = self.MetaDBOpsHendler.load(dbg, uri)
-            table = db.table('vdis')
-
-            while True:
-                image_meta = table.search(where(UUID_TAG) == vdi_uuid)[0]
-
-                if PARENT_URI_TAG in image_meta:
-                    vdi_chain.append(image_meta[PARENT_URI_TAG])
-                    vdi_uuid = get_vdi_uuid_by_uri(dbg, image_meta[PARENT_URI_TAG])
-                else:
-                    break
-
-            return vdi_chain
+            roots = table.search(~ (where(PARENT_URI_TAG).exists()))
+            while len(roots) != 0:
+                _roots_ = []
+                for root in roots:
+                    children = table.search(where(PARENT_URI_TAG) == root[KEY_TAG])
+                    if len(children) == 1:
+                        pairs.append((root, children[0]))
+                    elif len(children) > 1:
+                        _roots_.extend(children)
+                roots = _roots_
+            return pairs
         except Exception as e:
-            log.error("%s: xcpng.meta.MetadataHandler.get_vdi_chain: Failed to get vdi chain for uri: %s " % (dbg, uri))
+            log.error("%s: xcpng.meta.MetadataHandler.find_coalesceable_pairs: Failed to find "
+                      "coalesceable pairs for sr: %s " % (dbg, sr))
             raise Exception(e)

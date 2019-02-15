@@ -4,6 +4,7 @@ import subprocess
 import os
 import re
 import platform
+import time
 
 from xapi.storage import log
 from xapi.storage.libs.xcpng import utils, qmp
@@ -13,12 +14,12 @@ NBD_CLIENT = "/usr/sbin/nbd-client"
 QEMU_DP_SOCKET_DIR = utils.VAR_RUN_PREFIX + "/qemu-dp"
 
 IMAGE_TYPES = ['qcow2', 'qcow', 'vhdx', 'vpc', 'raw']
-ROOT_NODE_NAME = 'qemu_node'
+LEAF_NODE_NAME = 'qemu_node'
 SNAP_NODE_NAME = 'snap_node'
 RBD_NODE_NAME = 'rbd_node'
 
 
-def create(dbg, qemudisk, uri):
+def create(dbg, qemudisk, uri, img_qemu_uri):
     log.debug("%s: xcpng.qemudisk.create: uri: %s " % (dbg, uri))
 
     vdi_uuid = utils.get_vdi_uuid_by_uri(dbg, uri)
@@ -51,21 +52,22 @@ def create(dbg, qemudisk, uri):
 
     log.debug("%s: xcpng.qemudisk.create: New qemu process has pid %d" % (dbg, p.pid))
 
-    return qemudisk(dbg, sr_uuid, vdi_uuid, vdi_type, p.pid, qmp_sock, nbd_sock, qmp_log)
+    return qemudisk(dbg, sr_uuid, vdi_uuid, vdi_type, img_qemu_uri, p.pid, qmp_sock, nbd_sock, qmp_log)
 
 
-def introduce(dbg, qemudisk, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log):
-    log.debug("%s: xcpng.qemudisk.introduce: sr_uuid: %s vdi_uuid: %s vdi_type: %s pid: %d qmp_sock: %s nbd_sock: %s "
-              "qmp_log: %s" % (dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log))
+def introduce(dbg, qemudisk, sr_uuid, vdi_uuid, vdi_type, img_qemu_uri, pid, qmp_sock, nbd_sock, qmp_log):
+    log.debug("%s: xcpng.qemudisk.introduce: sr_uuid: %s vdi_uuid: %s vdi_type: %s image_uri: %s pid: %d qmp_sock: %s "
+              "nbd_sock: %s qmp_log: %s" % (dbg, sr_uuid, vdi_uuid, vdi_type, img_qemu_uri, pid, qmp_sock,
+                                            nbd_sock, qmp_log))
 
-    return qemudisk(dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log)
+    return qemudisk(dbg, sr_uuid, vdi_uuid, vdi_type, img_qemu_uri, pid, qmp_sock, nbd_sock, qmp_log)
 
 
 class Qemudisk(object):
-    def __init__(self, dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log):
-        log.debug("%s: xcpng.qemudisk.Qemudisk.__init__: sr_uuid: %s vdi_uuid: %s vdi_type: %s pid: %d qmp_sock: %s "
-                  "nbd_sock: %s qmp_log: %s"
-                  % (dbg, sr_uuid, vdi_uuid, vdi_type, pid, qmp_sock, nbd_sock, qmp_log))
+    def __init__(self, dbg, sr_uuid, vdi_uuid, vdi_type, img_qemu_uri, pid, qmp_sock, nbd_sock, qmp_log):
+        log.debug("%s: xcpng.qemudisk.Qemudisk.__init__: sr_uuid: %s vdi_uuid: %s vdi_type: %s image_uri: %s pid: %d "
+                  "qmp_sock: %s nbd_sock: %s qmp_log: %s"
+                  % (dbg, sr_uuid, vdi_uuid, vdi_type, img_qemu_uri, pid, qmp_sock, nbd_sock, qmp_log))
 
         self.vdi_uuid = vdi_uuid
         self.sr_uuid = sr_uuid
@@ -74,24 +76,40 @@ class Qemudisk(object):
         self.qmp_sock = qmp_sock
         self.nbd_sock = nbd_sock
         self.qmp_log = qmp_log
-        self.path = "%s/%s/%s" % (utils.SR_PATH_PREFIX, sr_uuid, vdi_uuid)
+        self.img_uri = img_qemu_uri
 
         self.params = 'nbd:unix:%s' % self.nbd_sock
-        qemu_params = '%s:%s:%s' % (self.vdi_uuid, ROOT_NODE_NAME, self.qmp_sock)
+        qemu_params = '%s:%s:%s' % (self.vdi_uuid, LEAF_NODE_NAME, self.qmp_sock)
 
         self.params = "hack|%s|%s" % (self.params, qemu_params)
-        self._set_open_args(dbg)
 
-    def _set_open_args(self, dbg):
-        log.debug("%s: xcpng.qemudisk.Qemudisk._set_open_args" % dbg)
         self.open_args = {'driver': self.vdi_type,
                           'cache': {'direct': True, 'no-flush': True},
                           # 'discard': 'unmap',
-                          'file': {'driver': 'file',
-                                   'aio': 'native',
-                                   'filename': self.path},
-                                   # 'node-name': RBD_NODE_NAME},
-                          'node-name': ROOT_NODE_NAME}
+                          'file': self._parse_image_uri(dbg),
+                          'node-name': LEAF_NODE_NAME}
+
+    def _parse_image_uri(self, dbg):
+        log.debug("%s: xcpng.qemudisk.Qemudisk.parse_image_uri: vdi_uuid %s uri %s"
+                  % (dbg, self.vdi_uuid, self.img_uri))
+
+        driver, path = self.img_uri.split(':')
+        if driver == 'file':
+            # file:/tmp/test.qcow2
+            file = {'driver': 'file', 'filename':  path}
+        elif driver == 'rbd':
+            # rbd:pool/image
+            pool, image = path.split('/')
+            file = {'driver': 'rbd', 'pool': pool, 'image': image}
+        elif driver == 'sheepdog':
+            # sheepdog+unix:///vdi?socket=socket_path
+            vdi, socket_def = path.split('?')
+            socket, path = socket_def.spit('=')
+            file = {'driver': 'sheepdog', 'server': {'type': 'unix', 'path': path}, 'vdi': vdi}
+        else:
+            log.error("%s: xcpng.qemudisk.Qemudisk.parse_uri: Driver %s is not supported" % (dbg, driver))
+            raise Exception("Qemu-dp driver %s is not supported" % driver)
+        return file
 
     def quit(self, dbg):
         log.debug("%s: xcpng.qemudisk.Qemudisk.quit: vdi_uuid %s pid %d qmp_sock %s"
@@ -127,7 +145,7 @@ class Qemudisk(object):
                           addr={'type': 'unix',
                                 'data': {'path': self.nbd_sock}})
             _qmp_.command("nbd-server-add",
-                          device=ROOT_NODE_NAME, writable=True)
+                          device=LEAF_NODE_NAME, writable=True)
             log.debug("%s: xcpng.qemudisk.Qemudisk.open: Image opened: %s" % (dbg, self.open_args))
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.open: Failed to open image in qemu_dp instance: uuid: %s pid %s" %
@@ -174,7 +192,7 @@ class Qemudisk(object):
             # Stop the NBD server
             _qmp_.command("nbd-server-stop")
             # Remove the block device
-            args = {"node-name": ROOT_NODE_NAME}
+            args = {"node-name": LEAF_NODE_NAME}
             _qmp_.command("blockdev-del", **args)
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.close: Failed to close image in qemu_dp instance: uuid: %s pid %s" %
@@ -200,17 +218,13 @@ class Qemudisk(object):
             args = {'driver': 'qcow2',
                     'cache': {'direct': True, 'no-flush': True},
                     # 'discard': 'unmap',
-
-                    'file': {'driver': 'file',
-                             'aio': 'native',
-                             'filename': self.path},
-                             # 'node-name': RBD_NODE_NAME},
+                    'file': self._parse_image_uri(dbg),
                     'node-name': SNAP_NODE_NAME,
                     'backing': ''}
 
             _qmp_.command('blockdev-add', **args)
 
-            args = {'node': ROOT_NODE_NAME,
+            args = {'node': LEAF_NODE_NAME,
                     'overlay': SNAP_NODE_NAME}
 
             _qmp_.command('blockdev-snapshot', **args)
@@ -234,7 +248,7 @@ class Qemudisk(object):
         try:
             _qmp_.connect()
             # Suspend IO on blockdev
-            args = {"device": ROOT_NODE_NAME}
+            args = {"device": LEAF_NODE_NAME}
             _qmp_.command("x-blockdev-suspend", **args)
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.suspend: Failed to suspend IO for image in qemu_dp instance: "
@@ -254,7 +268,7 @@ class Qemudisk(object):
         try:
             _qmp_.connect()
             # Resume IO on blockdev
-            args = {"device": ROOT_NODE_NAME}
+            args = {"device": LEAF_NODE_NAME}
             _qmp_.command("x-blockdev-resume", **args)
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.resume: Failed to resume IO for image in qemu_dp instance: "
@@ -264,3 +278,34 @@ class Qemudisk(object):
             except:
                 pass
             raise Exception(e)
+
+#    def commit(self, dbg):
+#        log.debug("%s: xcpng.qemudisk.Qemudisk.commit: vdi_uuid %s pid %d qmp_sock %s"
+#                  % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
+
+#        _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
+
+#        try:
+#            _qmp_.connect()
+#            # Commit
+#            args = {"job-id": "commit-{}".format(self.vdi_uuid),
+#                    "device": LEAF_NODE_NAME,
+#                    "top": self.path}
+            
+#            _qmp_.command('block-commit', **args)
+
+#            for i in range(50):
+#                res = _qmp_.command(dbg, "query-block-jobs")
+#                if len(res) == 0:
+#                    break
+#                time.sleep(0.1)
+#            _qmp_.close()
+
+#        except Exception as e:
+#            log.error("%s: xcpng.qemudisk.Qemudisk.resume: Failed to resume IO for image in qemu_dp instance: "
+#                      "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+#            try:
+#                _qmp_.close()
+#            except:
+#                pass
+#            raise Exception(e)

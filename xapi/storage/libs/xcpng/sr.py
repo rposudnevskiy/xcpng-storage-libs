@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 
-import json
+import xapi.storage.libs.xcpng.globalvars
 import platform
 from copy import deepcopy
-
-from xapi.storage.libs.xcpng.utils import call
 from xapi.storage import log
 from xapi.storage.libs.xcpng.meta import IMAGE_FORMAT_TAG, SR_UUID_TAG, CONFIGURATION_TAG, NAME_TAG, DESCRIPTION_TAG, \
-                                         DATAPATH_TAG, UUID_TAG, KEY_TAG, READ_WRITE_TAG, VIRTUAL_SIZE_TAG, \
+                                         DATAPATH_TAG, VDI_UUID_TAG, KEY_TAG, READ_WRITE_TAG, VIRTUAL_SIZE_TAG, \
                                          PHYSICAL_UTILISATION_TAG, URI_TAG, CUSTOM_KEYS_TAG, SHARABLE_TAG, \
                                          MetadataHandler
-from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_known_srs, get_sr_uuid_by_uri, get_vdi_uuid_by_name
+from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_known_srs, get_sr_uuid_by_uri, get_vdi_uuid_by_name, \
+                                          call, module_exists
 
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import SR_skeleton
@@ -21,20 +20,21 @@ elif platform.linux_distribution()[1] == '7.6.0':
 class SROperations(object):
 
     def __init__(self):
+        self.MetadataHandler = MetadataHandler()
         self.DEFAULT_SR_NAME = ''
         self.DEFAULT_SR_DESCRIPTION = ''
 
     def create(self, dbg, uri, configuration):
-        raise NotImplementedError('Override in VolumeOperations specifc class')
+        raise NotImplementedError('Override in SROperations specific class')
 
     def destroy(self, dbg, uri):
-        raise NotImplementedError('Override in VolumeOperations specifc class')
+        raise NotImplementedError('Override in SROperations specific class')
 
     def get_sr_list(self, dbg, uri, configuration):
-        raise NotImplementedError('Override in VolumeOperations specifc class')
+        raise NotImplementedError('Override in SROperations specific class')
 
     def get_vdi_list(self, dbg, uri):
-        raise NotImplementedError('Override in VolumeOperations specifc class')
+        raise NotImplementedError('Override in SROperations specific class')
 
     def sr_import(self, dbg, uri, configuration):
         # Override in VolumeOperations specifc class if required
@@ -61,18 +61,25 @@ class SROperations(object):
         return []
 
     def get_free_space(self, dbg, uri):
-        raise NotImplementedError('Override in VolumeOperations specifc class')
+        raise NotImplementedError('Override in SROperations specific class')
 
     def get_size(self, dbg, uri):
-        raise NotImplementedError('Override in VolumeOperations specifc class')
+        raise NotImplementedError('Override in SROperations specific class')
+
+
+plugin_specific_sr = module_exists("xapi.storage.libs.xcpng.lib%s.sr" % xapi.storage.libs.xcpng.globalvars.plugin_type)
+if plugin_specific_sr:
+    _SROperations_ = getattr(plugin_specific_sr, 'SROperations')
+else:
+    _SROperations_ = SROperations
 
 
 class SR(object):
 
     def __init__(self):
-        self.sr_type = ''
         self.MetadataHandler = MetadataHandler()
-        self.SROpsHendler = SROperations()
+        self.SROpsHendler = _SROperations_()
+        self.sr_type = xapi.storage.libs.xcpng.globalvars.plugin_type
 
     def probe(self, dbg, configuration):
         log.debug("{}: xcpng.sr.SR.probe: configuration={}".format(dbg, configuration))
@@ -110,7 +117,7 @@ class SR(object):
 
                     try:
                         self.SROpsHendler.sr_import(dbg, _sr_, configuration)
-                        sr_meta = self.MetadataHandler.load(dbg, _sr_)
+                        sr_meta = self.MetadataHandler.get_sr_meta(dbg, _sr_)
                     except Exception:
                         try:
                             self.SROpsHendler.sr_export(dbg, _sr_)
@@ -213,7 +220,7 @@ class SR(object):
             self.MetadataHandler.create(dbg, uri)
 
             configuration['sr_uuid'] = sr_uuid
-            pool_meta = {
+            sr_meta = {
                 SR_UUID_TAG: sr_uuid,
                 NAME_TAG: name,
                 DESCRIPTION_TAG: description,
@@ -221,11 +228,11 @@ class SR(object):
                 CONFIGURATION_TAG: configuration
             }
 
-            self.MetadataHandler.update(dbg, uri, pool_meta)
+            self.MetadataHandler.update_sr_meta(dbg, uri, sr_meta)
+            self.MetadataHandler.dump(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.create: Failed to create SR - sr_uuid: %s" % (dbg, sr_uuid))
             try:
-                self.SROpsHendler.sr_export(dbg, uri)
                 self.SROpsHendler.destroy(dbg, uri)
             except:
                 pass
@@ -242,7 +249,9 @@ class SR(object):
     def destroy(self, dbg, uri):
         log.debug("%s: xcpng.sr.SR.destroy: uri: %s" % (dbg, uri))
         try:
+            self.MetadataHandler.destroy(dbg, uri)
             self.SROpsHendler.destroy(dbg, uri)
+            call(dbg, ['rm', '-rf', "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))])
         except Exception as e:
             log.error("%s: xcpng.sr.SR.destroy: Failed to destroy SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
             raise Exception(e)
@@ -290,7 +299,7 @@ class SR(object):
         log.debug("%s: xcpng.sr.SR.stat: uri: %s" % (dbg, uri))
 
         try:
-            sr_meta = self.MetadataHandler.load(dbg, uri)
+            sr_meta = self.MetadataHandler.get_sr_meta(dbg, uri)
             log.debug("%s: xcpng.sr.SR.stat: pool_meta: %s" % (dbg, sr_meta))
 
             # Get the sizes
@@ -327,7 +336,7 @@ class SR(object):
         }
 
         try:
-            self.MetadataHandler.update(dbg, uri, sr_meta)
+            self.MetadataHandler.update_sr_meta(dbg, uri, sr_meta)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.set_name: Failed to set name for SR: %s" % (dbg, uri))
             raise Exception(e)
@@ -341,7 +350,7 @@ class SR(object):
         }
 
         try:
-            self.MetadataHandler.update(dbg, uri, sr_meta)
+            self.MetadataHandler.update_sr_meta(dbg, uri, sr_meta)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.set_description: Failed to set description for SR: %s" % (dbg, uri))
             raise Exception(e)
@@ -360,9 +369,9 @@ class SR(object):
 
                 log.debug("%s: xcpng.sr.SR.ls: SR: %s vdi : %s" % (dbg, uri, key))
 
-                volume_meta = self.MetadataHandler.load(dbg, "%s/%s" % (uri, key))
+                volume_meta = self.MetadataHandler.get_vdi_meta(dbg, "%s/%s" % (uri, key))
 
-                results.append({UUID_TAG: volume_meta[UUID_TAG],
+                results.append({VDI_UUID_TAG: volume_meta[VDI_UUID_TAG],
                                 KEY_TAG: volume_meta[KEY_TAG],
                                 NAME_TAG: volume_meta[NAME_TAG],
                                 DESCRIPTION_TAG: volume_meta[DESCRIPTION_TAG],

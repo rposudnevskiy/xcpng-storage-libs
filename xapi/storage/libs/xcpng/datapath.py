@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
+import xapi.storage.libs.xcpng.globalvars
+
 from os.path import exists
 from xapi.storage.libs.xcpng.utils import call
 
 from xapi.storage import log
 
 from xapi.storage.libs.xcpng.meta import MetadataHandler
-from xapi.storage.libs.xcpng.meta import NON_PERSISTENT_TAG, ACTIVE_ON_TAG, UUID_TAG, QEMU_PID_TAG, QEMU_QMP_SOCK_TAG, \
-                                         QEMU_NBD_SOCK_TAG, QEMU_QMP_LOG_TAG, PARENT_URI_TAG, REF_COUNT_TAG
-from xapi.storage.libs.xcpng.qemudisk import introduce, create, Qemudisk, ROOT_NODE_NAME
+from xapi.storage.libs.xcpng.meta import NON_PERSISTENT_TAG, ACTIVE_ON_TAG, VDI_UUID_TAG, QEMU_PID_TAG, \
+                                         QEMU_QMP_SOCK_TAG, QEMU_NBD_SOCK_TAG, QEMU_QMP_LOG_TAG, \
+                                         PARENT_URI_TAG, REF_COUNT_TAG, QEMU_IMAGE_URI_TAG, IMAGE_UUID_TAG
+from xapi.storage.libs.xcpng.qemudisk import introduce, create, Qemudisk, LEAF_NODE_NAME
 
-from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_current_host_uuid, get_sr_uuid_by_uri, \
+from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_current_host_uuid, get_sr_uuid_by_uri, module_exists, \
                                           get_vdi_type_by_uri, get_vdi_uuid_by_uri, get_vdi_datapath_by_uri
 
 import platform
@@ -19,41 +22,43 @@ if platform.linux_distribution()[1] == '7.5.0':
 elif platform.linux_distribution()[1] == '7.6.0':
     from xapi.storage.api.v5.datapath import Datapath_skeleton
 
-class Datapath(object):
+
+class DatapathOperations(object):
 
     def __init__(self):
         self.MetadataHandler = MetadataHandler()
         self.blkdev = None
 
     def gen_vol_path(self, dbg, uri):
-        return "%s/%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri), get_vdi_uuid_by_uri(dbg, uri))
+        volume_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
+        return "%s/%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri), volume_meta[IMAGE_UUID_TAG])
 
     def gen_vol_uri(self, dbg, uri):
-        return self.gen_vol_path(dbg, uri)
+        return "file:%s" % self.gen_vol_path(dbg, uri)
 
     def map_vol(self, dbg, uri, chained=False):
         if self.blkdev:
-            log.debug("%s: xcpng.datapath.Datapath.map_vol: uri: %s" % (dbg, uri))
+            log.debug("%s: xcpng.datapath.DatapathOperations.map_vol: uri: %s" % (dbg, uri))
             _blkdev_ = self.blkdev
 
             try:
-                image_meta = self.MetadataHandler.load(dbg, uri)
+                volume_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
 
                 if chained is True:
-                    if PARENT_URI_TAG in image_meta:
-                        self.map_vol(dbg, image_meta[PARENT_URI_TAG][0], chained)
+                    if PARENT_URI_TAG in volume_meta:
+                        self.map_vol(dbg, volume_meta[PARENT_URI_TAG][0], chained)
 
-                if REF_COUNT_TAG in image_meta:
+                if REF_COUNT_TAG in volume_meta:
                     new_meta = {}
-                    new_meta[REF_COUNT_TAG] = image_meta[REF_COUNT_TAG] + 1
-                    self.MetadataHandler.update(dbg, uri, new_meta)
+                    new_meta[REF_COUNT_TAG] = volume_meta[REF_COUNT_TAG] + 1
+                    self.MetadataHandler.update_vdi_meta(dbg, uri, new_meta)
                 else:
                     new_meta = {}
                     new_meta[REF_COUNT_TAG] = 1
                     call(dbg, ['ln', '-s', _blkdev_, self.gen_vol_path(dbg, uri)])
-                    self.MetadataHandler.update(dbg, uri, new_meta)
+                    self.MetadataHandler.update_vdi_meta(dbg, uri, new_meta)
             except Exception as e:
-                log.error("%s: xcpng.datapath.Datapath.map_vol: Failed to map volume: uri: %s device: %s" %
+                log.error("%s: xcpng.datapath.DatapathOperations.map_vol: Failed to map volume: uri: %s device: %s" %
                           (dbg, uri, _blkdev_))
                 raise Exception(e)
 
@@ -61,26 +66,53 @@ class Datapath(object):
         path = self.gen_vol_path(dbg, uri)
 
         if exists(path):
-            log.debug("%s: xcpng.datapath.Datapath.unmap_vol: uri: %s" % (dbg, uri))
+            log.debug("%s: xcpng.datapath.DatapathOperations.unmap_vol: uri: %s" % (dbg, uri))
             try:
-                image_meta = self.MetadataHandler.load(dbg, uri)
-                if REF_COUNT_TAG in image_meta:
+                volume_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
+                if REF_COUNT_TAG in volume_meta:
                     new_meta = {}
-                    if image_meta[REF_COUNT_TAG] == 1:
+                    if volume_meta[REF_COUNT_TAG] == 1:
                         new_meta[REF_COUNT_TAG] = None
                         call(dbg, ['unlink', path])
                     else:
-                        new_meta[REF_COUNT_TAG] = image_meta[REF_COUNT_TAG] - 1
-                    self.MetadataHandler.update(dbg, uri, new_meta)
+                        new_meta[REF_COUNT_TAG] = volume_meta[REF_COUNT_TAG] - 1
+                    self.MetadataHandler.update_vdi_meta(dbg, uri, new_meta)
 
                 if chained:
-                    if PARENT_URI_TAG in image_meta:
-                        self.unmap_vol(dbg, image_meta[PARENT_URI_TAG][0], chained)
+                    if PARENT_URI_TAG in volume_meta:
+                        self.unmap_vol(dbg, volume_meta[PARENT_URI_TAG][0], chained)
             except Exception as e:
-                log.error("%s: xcpng.datapath.Datapath.unmap_vol: Failed to unmap volume: uri: %s" % (dbg, uri))
+                log.error("%s: xcpng.datapath.DatapathOperations.unmap_vol: Failed to unmap volume: uri: %s" % (dbg, uri))
                 raise Exception(e)
 
-    def _open(self, dbg, uri, domain):
+
+plugin_specific_datapath = module_exists("xapi.storage.libs.xcpng.lib%s.datapath" % xapi.storage.libs.xcpng.globalvars.plugin_type)
+if plugin_specific_datapath:
+    _DatapathOperations_ = getattr(plugin_specific_datapath, 'DatapathOperations')
+else:
+    _DatapathOperations_ = DatapathOperations
+
+
+class Datapath(object):
+
+    def __init__(self):
+        self.MetadataHandler = MetadataHandler()
+        self.DatapathOpsHandler = _DatapathOperations_()
+
+    def _commit(self, dbg, uri, parent, domain):
+        raise NotImplementedError('Override in Datapath specifc class')
+
+    def commit(self, dbg, uri, parent, domain):
+        log.debug("%s: xcpng.datapath.Datapath.parent: uri: %s parent: %s domain: %s"
+                  % (dbg, uri, parent, domain))
+
+        try:
+            self._commit(dbg, uri, parent, domain)
+        except Exception as e:
+            log.error("%s: xcpng.datapath.Datapath.detach: Failed to commit: uri: %s" % (dbg, uri))
+            raise Exception(e)
+
+    def _open(self, dbg, uri, persistent):
         raise NotImplementedError('Override in Datapath specifc class')
 
     def open(self, dbg, uri, persistent):
@@ -88,7 +120,7 @@ class Datapath(object):
                   % (dbg, uri, persistent))
 
         try:
-            image_meta = self.MetadataHandler.load(dbg, uri)
+            image_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
 
             if NON_PERSISTENT_TAG in image_meta:
                 vdi_non_persistent = image_meta[NON_PERSISTENT_TAG]
@@ -102,7 +134,7 @@ class Datapath(object):
                     image_meta = {
                         NON_PERSISTENT_TAG: None,
                     }
-                    self.MetadataHandler.update(dbg, uri, image_meta)
+                    self.MetadataHandler.update_vdi_meta(dbg, uri, image_meta)
                     # on detach remove special snapshot to rollback to
             elif vdi_non_persistent:
                 log.debug("%s: xcpng.Datapath.open: uri: %s already marked as non-persistent" % (dbg, uri))
@@ -112,7 +144,7 @@ class Datapath(object):
                 image_meta = {
                     NON_PERSISTENT_TAG: True,
                 }
-                self.MetadataHandler.update(dbg, uri, image_meta)
+                self.MetadataHandler.update_vdi_meta(dbg, uri, image_meta)
                 # on attach create special snapshot to rollback to on detach
 
             self._open(dbg, uri, persistent)
@@ -127,7 +159,7 @@ class Datapath(object):
         log.debug("%s: xcpng.datapath.Datapath.close: uri: %s" % (dbg, uri))
 
         try:
-            image_meta = self.MetadataHandler.load(dbg, uri)
+            image_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
 
             if NON_PERSISTENT_TAG in image_meta:
                 vdi_non_persistent = image_meta[NON_PERSISTENT_TAG]
@@ -140,7 +172,7 @@ class Datapath(object):
                 image_meta = {
                     NON_PERSISTENT_TAG: None,
                 }
-                self.MetadataHandler.update(dbg, uri, image_meta)
+                self.MetadataHandler.update_vdi_meta(dbg, uri, image_meta)
 
             self._close(dbg, uri)
         except Exception as e:
@@ -155,7 +187,7 @@ class Datapath(object):
                   % (dbg, uri, domain))
 
         try:
-            self.map_vol(dbg, uri, chained=True)
+            self.DatapathOpsHandler.map_vol(dbg, uri, chained=True)
 
             if platform.linux_distribution()[1] == '7.5.0':
                 protocol, params = self._attach(dbg, uri, domain)
@@ -170,7 +202,7 @@ class Datapath(object):
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.attach: Failed to attach datapath for volume: uri: %s" % (dbg, uri))
             try:
-                self.unmap_vol(dbg, uri, chained=True)
+                self.DatapathOpsHandler.unmap_vol(dbg, uri, chained=True)
             except:
                 pass
             raise Exception(e)
@@ -183,7 +215,7 @@ class Datapath(object):
                   % (dbg, uri, domain))
 
         try:
-            self.unmap_vol(dbg, uri, chained=True)
+            self.DatapathOpsHandler.unmap_vol(dbg, uri, chained=True)
             self._detach(dbg, uri, domain)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.detach: Failed to detach datapath for volume: uri: %s" % (dbg, uri))
@@ -205,7 +237,7 @@ class Datapath(object):
                 ACTIVE_ON_TAG: get_current_host_uuid()
             }
 
-            self.MetadataHandler.update(dbg, uri, image_meta)
+            self.MetadataHandler.update_vdi_meta(dbg, uri, image_meta)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.activate: Failed to activate datapath for volume: uri: %s" %
                       (dbg, uri))
@@ -229,7 +261,7 @@ class Datapath(object):
                 ACTIVE_ON_TAG: None
             }
 
-            self.MetadataHandler.update(dbg, uri, image_meta)
+            self.MetadataHandler.update_vdi_meta(dbg, uri, image_meta)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.deactivate: Failed to deactivate datapath for volume: uri: %s" %
                       (dbg, uri))
@@ -278,27 +310,40 @@ class Datapath(object):
 class QdiskDatapath(Datapath):
 
     def __init__(self):
-        super(QdiskDatapath, self).__init__()
         self.qemudisk = Qemudisk
+        super(QdiskDatapath, self).__init__()
 
     def _load_qemu_dp(self, dbg, uri, domain):
         log.debug("%s: xcpng.datapath.QdiskDatapath._load_qemu_dp: uri: %s domain: %s"
                   % (dbg, uri, domain))
 
         try:
-            image_meta = self.MetadataHandler.load(dbg, uri)
+            volume_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
 
             return introduce(dbg,
                              self.qemudisk,
                              get_sr_uuid_by_uri(dbg, uri),
-                             image_meta[UUID_TAG],
+                             volume_meta[VDI_UUID_TAG],
                              get_vdi_type_by_uri(dbg, uri),
-                             image_meta[QEMU_PID_TAG],
-                             image_meta[QEMU_QMP_SOCK_TAG],
-                             image_meta[QEMU_NBD_SOCK_TAG],
-                             image_meta[QEMU_QMP_LOG_TAG])
+                             volume_meta[QEMU_IMAGE_URI_TAG],
+                             volume_meta[QEMU_PID_TAG],
+                             volume_meta[QEMU_QMP_SOCK_TAG],
+                             volume_meta[QEMU_NBD_SOCK_TAG],
+                             volume_meta[QEMU_QMP_LOG_TAG])
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._load_qemu_dp: Failed to load qemu_dp for volume: uri: %s" %
+                      (dbg, uri))
+            raise Exception(e)
+
+    def _commit(self, dbg, uri, parent, domain):
+        log.debug("%s: xcpng.QdiskDatapath._commit: uri: %s parent: %s domain: %s"
+                  % (dbg, uri, parent, domain))
+
+        try:
+            qemu_dp = self._load_qemu_dp(dbg, uri, domain)
+            qemu_dp.open(dbg)
+        except Exception as e:
+            log.error("%s: xcpng.datapath.QdiskDatapath._activate: Failed to activate datapath for volume: uri: %s" %
                       (dbg, uri))
             raise Exception(e)
 
@@ -319,16 +364,19 @@ class QdiskDatapath(Datapath):
         protocol = 'Qdisk'
 
         try:
-            qemu_dp = create(dbg, self.qemudisk, uri)
+            image_qemu_uri = self.DatapathOpsHandler.gen_vol_uri(dbg, uri)
 
-            image_meta = {
+            qemu_dp = create(dbg, self.qemudisk, uri, image_qemu_uri)
+
+            volume_meta = {
                 QEMU_PID_TAG: qemu_dp.pid,
                 QEMU_QMP_SOCK_TAG: qemu_dp.qmp_sock,
                 QEMU_NBD_SOCK_TAG: qemu_dp.nbd_sock,
-                QEMU_QMP_LOG_TAG: qemu_dp.qmp_log
+                QEMU_QMP_LOG_TAG: qemu_dp.qmp_log,
+                QEMU_IMAGE_URI_TAG: image_qemu_uri
             }
 
-            self.MetadataHandler.update(dbg, uri, image_meta)
+            self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
 
             if platform.linux_distribution()[1] == '7.5.0':
                 return (protocol, qemu_dp.params)
@@ -346,7 +394,7 @@ class QdiskDatapath(Datapath):
                         'Nbd',
                         {
                             'uri': 'nbd:unix:{}:exportname={}'
-                                .format(qemu_dp.nbd_sock, ROOT_NODE_NAME)
+                                .format(qemu_dp.nbd_sock, LEAF_NODE_NAME)
                         }
                     ]
                 ]
@@ -356,13 +404,14 @@ class QdiskDatapath(Datapath):
                       (dbg, uri))
             try:
                 qemu_dp.quit(dbg)
-                image_meta = {
+                volume_meta = {
                     QEMU_PID_TAG: None,
                     QEMU_QMP_SOCK_TAG: None,
                     QEMU_NBD_SOCK_TAG: None,
-                    QEMU_QMP_LOG_TAG: None
+                    QEMU_QMP_LOG_TAG: None,
+                    QEMU_IMAGE_URI_TAG: None
                 }
-                self.MetadataHandler.update(dbg, uri, image_meta)
+                self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
             except:
                 pass
             raise Exception(e)
@@ -375,14 +424,15 @@ class QdiskDatapath(Datapath):
 
             qemu_dp.quit(dbg)
 
-            image_meta = {
+            volume_meta = {
                 QEMU_PID_TAG: None,
                 QEMU_QMP_SOCK_TAG: None,
                 QEMU_NBD_SOCK_TAG: None,
-                QEMU_QMP_LOG_TAG: None
+                QEMU_QMP_LOG_TAG: None,
+                QEMU_IMAGE_URI_TAG: None
             }
 
-            self.MetadataHandler.update(dbg, uri, image_meta)
+            self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._detach: Failed to detach datapath for volume: uri: %s" %
                       (dbg, uri))

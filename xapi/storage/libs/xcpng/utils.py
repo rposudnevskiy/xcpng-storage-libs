@@ -5,7 +5,8 @@ import os
 import math
 import urlparse
 import xapi
-import errno
+from pkgutil import find_loader
+from importlib import import_module
 from xapi.storage import log
 from subprocess import Popen, PIPE
 
@@ -21,6 +22,10 @@ VHD_BLOCK_SIZE = 2 * 1024 * 1024
 RBD_BLOCK_SIZE = 2 * 1024 * 1024
 RBD_BLOCK_ORDER = int(math.log(RBD_BLOCK_SIZE, 2))
 
+def module_exists(module_name):
+    if find_loader(module_name) is not None:
+        return import_module(module_name)
+    return None
 
 def get_vdi_type_by_uri(dbg, uri):
     scheme = urlparse.urlparse(uri).scheme
