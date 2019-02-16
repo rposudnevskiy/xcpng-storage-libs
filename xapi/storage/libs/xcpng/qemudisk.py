@@ -92,21 +92,28 @@ class Qemudisk(object):
     def _parse_image_uri(self, dbg):
         log.debug("%s: xcpng.qemudisk.Qemudisk.parse_image_uri: vdi_uuid %s uri %s"
                   % (dbg, self.vdi_uuid, self.img_uri))
-
-        driver, path, conf = self.img_uri.split(':')
+        regex = re.compile('^([A-Za-z+]*):(.*)$')
+        result = regex.match(self.img_uri)
+        driver = result.group(1)
+        path = result.group(2)
         if driver == 'file':
             # file:/tmp/test.qcow2
             file = {'driver': 'file', 'filename':  path}
         elif driver == 'rbd':
             # rbd:pool/image:conf=/etc/ceph/ceph.conf
-            pool, image = path.split('/')
-            opt, file_name = conf.split('=')
-            file = {'driver': 'rbd', 'pool': pool, 'image': image, 'conf': file_name}
-        elif driver == 'sheepdog':
+            regex = re.compile('^([A-Za-z0-9+_-]*)/([A-Za-z0-9+_-]*):conf=([A-Za-z0-9/.]*)$')
+            result = regex.match(path)
+            pool = result.group(1)
+            image = result.group(2)
+            conf = result.group(3)
+            file = {'driver': 'rbd', 'pool': pool, 'image': image, 'conf': conf}
+        elif driver == 'sheepdog+unix':
             # sheepdog+unix:///vdi?socket=socket_path
-            vdi, socket_def = path.split('?')
-            socket, path = socket_def.spit('=')
-            file = {'driver': 'sheepdog', 'server': {'type': 'unix', 'path': path}, 'vdi': vdi}
+            regex = re.compile('^///([A-Za-z0-9_-]*)\\?socket=([A-Za-z0-9/.-]*)$')
+            result = regex.match(path)
+            vdi = result.group(1)
+            socket = result.group(2)
+            file = {'driver': 'sheepdog', 'server': {'type': 'unix', 'path': socket}, 'vdi': vdi}
         else:
             log.error("%s: xcpng.qemudisk.Qemudisk.parse_uri: Driver %s is not supported" % (dbg, driver))
             raise Exception("Qemu-dp driver %s is not supported" % driver)
