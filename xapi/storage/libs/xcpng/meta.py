@@ -5,7 +5,8 @@ import atexit
 
 from tinydb import TinyDB, Query, where
 from tinydb.operations import delete
-from tinydb.storages import MemoryStorage
+from tinydb.storages import MemoryStorage as Storage
+from tinydb.database import StorageProxy
 from json import dumps, loads
 
 from xapi.storage import log
@@ -95,7 +96,7 @@ def merge(src, dst, pattern):
 
 class MetaDBOperations(object):
 
-    def create(self, dbg, uri):
+    def create(self, dbg, uri, db, size=0):
         raise NotImplementedError('Override in MetaDBOperations specific class')
 
     def destroy(self, dbg, uri):
@@ -107,18 +108,46 @@ class MetaDBOperations(object):
     def dump(self, dbg, uri, db):
         raise NotImplementedError('Override in MetaDBOperations specific class')
 
-    def lock(self, dbg, uri):
+
+class LocksOpsMgr(object):
+
+    def __init__(self):
+        self.__lhs = {}
+
+    def lock(self, dbg, uri, timeout=10):
         raise NotImplementedError('Override in MetaDBOperations specific class')
 
     def unlock(self, dbg, uri):
         raise NotImplementedError('Override in MetaDBOperations specific class')
 
 
-plugin_specific_meta = module_exists("xapi.storage.libs.xcpng.lib%s.meta" % xapi.storage.libs.xcpng.globalvars.plugin_type)
-if plugin_specific_meta:
-    _MetaDBOperations_ = getattr(plugin_specific_meta, 'MetaDBOperations')
+plugin_specific_metadb_ops = module_exists("xapi.storage.libs.xcpng.lib%s.meta" %
+                                           xapi.storage.libs.xcpng.globalvars.plugin_type)
+if plugin_specific_metadb_ops:
+    _MetaDBOperations_ = getattr(plugin_specific_metadb_ops, 'MetaDBOperations')
 else:
     _MetaDBOperations_ = MetaDBOperations
+
+plugin_specific_metadb_cs = module_exists("xapi.storage.libs.xcpng.cluster_stack.%s.tinydb_storage"
+                                          % xapi.storage.libs.xcpng.globalvars.cluster_stack)
+if plugin_specific_metadb_cs:
+    _Storage_ = getattr(plugin_specific_metadb_cs, 'Storage')
+    _StorageProxy_ = getattr(plugin_specific_metadb_cs, 'StorageProxy')
+else:
+    _Storage_ = Storage
+    _StorageProxy_ = StorageProxy
+
+plugin_specific_metadb_lk = module_exists("xapi.storage.libs.xcpng.cluster_stack.%s.locks"
+                                          % xapi.storage.libs.xcpng.globalvars.cluster_stack)
+if plugin_specific_metadb_lk:
+    _LocksOpsMgr_ = getattr(plugin_specific_metadb_lk, 'LocksOpsMgr')
+else:
+    plugin_specific_metadb_lk = module_exists("xapi.storage.libs.xcpng.lib%s.locks" %
+                                              xapi.storage.libs.xcpng.globalvars.plugin_type)
+    if plugin_specific_metadb_lk:
+        _LocksOpsMgr_ = getattr(plugin_specific_metadb_lk, 'LocksOpsMgr')
+    else:
+        _LocksOpsMgr_ = LocksOpsMgr
 
 
 class MetadataHandler(object):
@@ -135,7 +164,7 @@ class MetadataHandler(object):
 
     def __init__(self):
         log.debug("xcpng.meta.MetadataHandler.__init___")
-        self.db = TinyDB(storage=MemoryStorage, default_table='sr')
+        self.db = TinyDB('srs_meta', storage=_Storage_, storage_proxy_class=_StorageProxy_, default_table='sr')
         self.__loaded = False
         self.__locked = False
         self.__updated = False
@@ -143,6 +172,7 @@ class MetadataHandler(object):
         self.__dbg = None
 
         self.MetaDBOpsHandler = _MetaDBOperations_()
+        self.LocksOpshandler = _LocksOpsMgr_()
 
         atexit.register(self.__on_exit)
 
@@ -156,7 +186,7 @@ class MetadataHandler(object):
     def create(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.create: uri: %s " % (dbg, uri))
         try:
-            self.MetaDBOpsHandler.create(dbg, uri)
+            self.MetaDBOpsHandler.create(dbg, uri, '{"sr": {}, "vdis": {}}')
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.create: Failed to create metadata database: uri: %s " % (dbg, uri))
             raise Exception(e)
@@ -172,10 +202,14 @@ class MetadataHandler(object):
     def __load(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.__load: uri: %s " % (dbg, uri))
         self.__uri = uri
-        self.__dbg = uri
+        self.__dbg = dbg
         try:
-            self.db._storage.write(loads(self.MetaDBOpsHandler.load(dbg, uri)))
-            self.__loaded = True
+            self.db._storage.set_db_name(get_sr_uuid_by_uri(dbg, uri))
+            if self.db._storage.is_loaded:
+                self.__loaded = True
+            else:
+                self.db._storage.load(loads(self.MetaDBOpsHandler.load(dbg, uri)))
+                self.__loaded = True
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.load: Failed to load metadata" % dbg)
             raise Exception(e)
@@ -186,7 +220,8 @@ class MetadataHandler(object):
     def __dump(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.__dump: uri: %s " % (dbg, uri))
         try:
-            self.MetaDBOpsHandler.dump(dbg, uri, dumps(self.db._storage.read()))
+            self.db._storage.set_db_name(get_sr_uuid_by_uri(dbg, uri))
+            self.MetaDBOpsHandler.dump(dbg, uri, dumps(self.db._storage.read(), default=dict))
             self.__updated = False
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.__dump: Failed to dump metadata" % dbg)
@@ -198,7 +233,7 @@ class MetadataHandler(object):
     def lock(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.lock: uri: %s " % (dbg, uri))
         try:
-            self.MetaDBOpsHandler.lock(dbg, uri)
+            self.LocksOpshandler.lock(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.lock: Failed to lock metadata DB" % dbg)
             raise Exception(e)
@@ -206,7 +241,7 @@ class MetadataHandler(object):
     def unlock(self, dbg, uri):
         log.debug("%s: xcpng.meta.MetadataHandler.unlock: uri: %s " % (dbg, uri))
         try:
-            self.MetaDBOpsHandler.unlock(dbg, uri)
+            self.LocksOpshandler.unlock(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.unlock: Failed to unlock metadata DB" % dbg)
             raise Exception(e)
@@ -218,14 +253,16 @@ class MetadataHandler(object):
             self.__load(dbg, uri)
 
         vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
+        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
 
         if vdi_uuid == '':
             raise('Incorrect VDI uri')
 
+        self.db._storage.set_db_name(sr_uuid)
         self.__update(dbg, vdi_uuid, 'vdis', meta)
 
     def update_sr_meta(self, dbg, uri, meta):
-        log.debug("%s: xcpng.meta.MetadataHandler.update_vdi_meta: uri: %s " % (dbg, uri))
+        log.debug("%s: xcpng.meta.MetadataHandler.update_sr_meta: uri: %s " % (dbg, uri))
 
         if self.__loaded is False:
             self.__load(dbg, uri)
@@ -235,6 +272,7 @@ class MetadataHandler(object):
         if sr_uuid == '':
             raise Exception('Incorrect SR uri')
 
+        self.db._storage.set_db_name(sr_uuid)
         self.__update(dbg, sr_uuid, 'sr', meta)
 
     def __update(self, dbg, uuid, table_name, meta):
@@ -277,6 +315,7 @@ class MetadataHandler(object):
         if vdi_uuid == '':
             raise('Incorrect VDI uri')
 
+        self.db._storage.set_db_name(get_sr_uuid_by_uri(dbg, uri))
         self.__remove(dbg, vdi_uuid, 'vdis')
 
     def __remove(self, dbg, uuid, table_name):
@@ -305,10 +344,12 @@ class MetadataHandler(object):
             self.__load(dbg, uri)
 
         vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
+        sr_uuid = get_sr_uuid_by_uri(dbg, uri)
 
         if vdi_uuid == '':
             raise('Incorrect VDI uri')
 
+        self.db._storage.set_db_name(sr_uuid)
         return self.__get_meta(dbg, vdi_uuid, 'vdis')
 
     def get_sr_meta(self, dbg, uri):
@@ -322,6 +363,7 @@ class MetadataHandler(object):
         if sr_uuid == '':
             raise Exception('Incorrect SR uri')
 
+        self.db._storage.set_db_name(sr_uuid)
         return self.__get_meta(dbg, sr_uuid, 'sr')
 
     def __get_meta(self, dbg, uuid, table_name):
@@ -351,6 +393,8 @@ class MetadataHandler(object):
         if self.__loaded is False:
             self.__load(dbg, uri)
 
+        self.db._storage.set_db_name(get_sr_uuid_by_uri(dbg, uri))
+
         try:
             table = self.db.table('vdis')
             return table.search(where(PARENT_URI_TAG) == get_vdi_uuid_by_uri(dbg, uri))
@@ -366,6 +410,8 @@ class MetadataHandler(object):
             self.__load(dbg, sr)
 
         pairs = []
+
+        self.db._storage.set_db_name(get_sr_uuid_by_uri(dbg, sr))
 
         table = self.db.table('vdis')
 
