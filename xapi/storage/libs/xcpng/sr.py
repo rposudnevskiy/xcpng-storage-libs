@@ -13,9 +13,8 @@ from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_known_srs, get_sr_
 
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import SR_skeleton
-elif platform.linux_distribution()[1] == '7.6.0':
+elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
     from xapi.storage.api.v5.volume import SR_skeleton
-
 
 class SROperations(object):
 
@@ -280,6 +279,7 @@ class SR(object):
             log.error("%s: xcpng.sr.SR.attach: Failed to attach SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
             try:
                 self.SROpsHendler.sr_export(dbg, uri)
+                call(dbg, ['rm', '-rf', configuration['mountpoint']])
             except:
                 pass
             raise Exception(e)
@@ -315,9 +315,11 @@ class SR(object):
         return {
             'sr': uri,
             'uuid': get_sr_uuid_by_uri(dbg, uri),
-            'name': sr_meta[NAME_TAG] if NAME_TAG in sr_meta
+            'name': sr_meta[NAME_TAG] if sr_meta[NAME_TAG] is not None else ''
+                                      if NAME_TAG in sr_meta
                                       else self.SROpsHendler.DEFAULT_SR_NAME,
-            'description': sr_meta[DESCRIPTION_TAG] if DESCRIPTION_TAG in sr_meta
+            'description': sr_meta[DESCRIPTION_TAG] if sr_meta[DESCRIPTION_TAG] is not None
+                                                    else '' if DESCRIPTION_TAG in sr_meta
                                                     else self.SROpsHendler.DEFAULT_SR_DESCRIPTION,
             'total_space': tsize,
             'free_space': fsize,

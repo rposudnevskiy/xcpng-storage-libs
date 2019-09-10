@@ -1,10 +1,12 @@
 #!/usr/bin/env python
-
 import re
 import os
 import math
 import urlparse
 import xapi
+import errno
+import shutil
+from uuid import UUID
 from pkgutil import find_loader
 from importlib import import_module
 from xapi.storage import log
@@ -22,10 +24,19 @@ VHD_BLOCK_SIZE = 2 * 1024 * 1024
 RBD_BLOCK_SIZE = 2 * 1024 * 1024
 RBD_BLOCK_ORDER = int(math.log(RBD_BLOCK_SIZE, 2))
 
+def is_valid_uuid(val):
+    try:
+        UUID(str(val))
+        return True
+    except ValueError:
+        return False
+
 def module_exists(module_name):
-    if find_loader(module_name) is not None:
+    try:
+        find_loader(module_name)
         return import_module(module_name)
-    return None
+    except ImportError:
+        return None
 
 def get_vdi_type_by_uri(dbg, uri):
     scheme = urlparse.urlparse(uri).scheme
@@ -48,7 +59,10 @@ def get_cluster_name_by_uri(dbg, uri):
 def get_sr_uuid_by_uri(dbg, uri):
     regex = re.compile('/([A-Za-z0-9\-]*)/{0,1}([A-Za-z0-9\-]*)')
     result = regex.match(urlparse.urlparse(uri).path)
-    return result.group(1)
+    if result is not None:
+        return result.group(1)
+    else:
+        return None
 
 
 def get_sr_uuid_by_name(dbg, name):
@@ -59,7 +73,10 @@ def get_sr_uuid_by_name(dbg, name):
 def get_vdi_uuid_by_uri(dbg, uri):
     regex = re.compile('/([A-Za-z0-9\-]*)/{0,1}([A-Za-z0-9\-]*)')
     result = regex.match(urlparse.urlparse(uri).path)
-    return result.group(2)
+    if result is not None:
+        return result.group(2)
+    else:
+        return None
 
 
 def get_vdi_uuid_by_name(dbg, name):
@@ -90,6 +107,16 @@ def get_current_host_uuid():
             return line.split("'")[1]
     fd.close()
 
+def get_host_uuid_by_name(name):
+    args = ['xe', 'host-list', "name-label=%s" % name]
+    proc = Popen(args, stdout=PIPE, close_fds=True)
+    stdout = proc.communicate()[0]
+    uuid = None
+    if proc.returncode == 0:
+        for line in stdout.split('\n'):
+            if 'uuid' in line:
+                uuid=line.split(':')[1].strip()
+    return uuid
 
 def get_known_srs():
     srs = []
@@ -135,6 +162,17 @@ def mkdir_p(path, mode=None):
         except OSError:
             raise
 
+def remove_path(path, force=False):
+    try:
+        os.unlink(path)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            if not force:
+                raise
+        elif exc.errno == errno.EISDIR:
+            shutil.rmtree(path)
+        else:
+            raise
 
 # Functions from /opt/xensource/sm/vhdutil.py
 

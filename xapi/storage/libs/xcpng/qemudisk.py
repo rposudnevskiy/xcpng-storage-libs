@@ -182,7 +182,7 @@ class Qemudisk(object):
                     os.unlink(path)
                 except Exception:
                     log.debug("%s: xcpng.qemudisk.Qemudisk.close: There was no xenstore setup" % dbg)
-            elif platform.linux_distribution()[1] == '7.6.0':
+            elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
                 path = "{}/{}".format(utils.VAR_RUN_PREFIX, self.vdi_uuid)
                 try:
                     with open(path, 'r') as f:
@@ -287,33 +287,69 @@ class Qemudisk(object):
                 pass
             raise Exception(e)
 
-#    def commit(self, dbg):
-#        log.debug("%s: xcpng.qemudisk.Qemudisk.commit: vdi_uuid %s pid %d qmp_sock %s"
-#                  % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
+    def relink(self, dbg, top, base):
+        log.debug("%s: xcpng.qemudisk.Qemudisk.relink: vdi_uuid %s pid %d qmp_sock %s"
+                  % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
 
-#        _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
+        _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
 
-#        try:
-#            _qmp_.connect()
-#            # Commit
-#            args = {"job-id": "commit-{}".format(self.vdi_uuid),
-#                    "device": LEAF_NODE_NAME,
-#                    "top": self.path}
+        try:
+            _qmp_.connect()
+            # Commit
+            args = {"job-id": "relink-{}".format(self.vdi_uuid),
+                    "device": LEAF_NODE_NAME,
+                    "top": top,
+                    "base": base,
+                    "backing-file": base}
+
+            _qmp_.command('relink-chain', **args)
+
+            for i in range(50):
+                res = _qmp_.command(dbg, "query-block-jobs")
+                if len(res) == 0:
+                    break
+                time.sleep(0.1)
+            _qmp_.close()
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.relink: Failed to relink chain for image in qemu_dp instance: "
+                      "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)
+
+    def commit(self, dbg, top, base):
+        log.debug("%s: xcpng.qemudisk.Qemudisk.commit: vdi_uuid %s pid %d qmp_sock %s"
+                  % (dbg, self.vdi_uuid, self.pid, self.qmp_sock))
+
+        _qmp_ = qmp.QEMUMonitorProtocol(self.qmp_sock)
+
+        try:
+            _qmp_.connect()
+            # Commit
+            args = {"job-id": "commit-{}".format(self.vdi_uuid),
+                    "device": LEAF_NODE_NAME,
+                    "top": top,
+                    "base": base}
             
-#            _qmp_.command('block-commit', **args)
+            _qmp_.command('block-commit', **args)
 
-#            for i in range(50):
-#                res = _qmp_.command(dbg, "query-block-jobs")
-#                if len(res) == 0:
-#                    break
-#                time.sleep(0.1)
-#            _qmp_.close()
-
-#        except Exception as e:
-#            log.error("%s: xcpng.qemudisk.Qemudisk.resume: Failed to resume IO for image in qemu_dp instance: "
-#                      "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
-#            try:
-#                _qmp_.close()
-#            except:
-#                pass
-#            raise Exception(e)
+            for i in range(50):
+                res = _qmp_.command(dbg, "query-block-jobs")
+                if len(res) == 0:
+                    if self.img_uri == top:
+                        args = {"device": "commit-{}".format(self.vdi_uuid)}
+                        _qmp_.command('block-job-complete', **args)
+                    else:
+                        break
+                time.sleep(0.1)
+            _qmp_.close()
+        except Exception as e:
+            log.error("%s: xcpng.qemudisk.Qemudisk.commit: Failed to commit changes for image in qemu_dp instance: "
+                      "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            try:
+                _qmp_.close()
+            except:
+                pass
+            raise Exception(e)

@@ -19,7 +19,7 @@ from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_current_host_uuid,
 import platform
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.datapath import Datapath_skeleton
-elif platform.linux_distribution()[1] == '7.6.0':
+elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
     from xapi.storage.api.v5.datapath import Datapath_skeleton
 
 
@@ -99,17 +99,30 @@ class Datapath(object):
         self.MetadataHandler = MetadataHandler()
         self.DatapathOpsHandler = _DatapathOperations_()
 
-    def _commit(self, dbg, uri, parent, domain):
+    def _relink(self, dbg, uri, child, parent, domain):
         raise NotImplementedError('Override in Datapath specifc class')
 
-    def commit(self, dbg, uri, parent, domain):
-        log.debug("%s: xcpng.datapath.Datapath.parent: uri: %s parent: %s domain: %s"
-                  % (dbg, uri, parent, domain))
+    def relink(self, dbg, uri, child, parent, domain):
+        log.debug("%s: xcpng.datapath.Datapath.relink: uri: %s child: %s parent: %s domain: %s"
+                  % (dbg, uri, child, parent, domain))
 
         try:
-            self._commit(dbg, uri, parent, domain)
+            self._relink(dbg, uri, child, parent, domain)
         except Exception as e:
-            log.error("%s: xcpng.datapath.Datapath.detach: Failed to commit: uri: %s" % (dbg, uri))
+            log.error("%s: xcpng.datapath.Datapath.relink: Failed to relink: uri: %s" % (dbg, uri))
+            raise Exception(e)
+
+    def _commit(self, dbg, uri, child, parent, domain):
+        raise NotImplementedError('Override in Datapath specifc class')
+
+    def commit(self, dbg, uri, child, parent, domain):
+        log.debug("%s: xcpng.datapath.Datapath.commit: uri: %s child: %s parent: %s domain: %s"
+                  % (dbg, uri, child, parent, domain))
+
+        try:
+            self._commit(dbg, uri, child, parent, domain)
+        except Exception as e:
+            log.error("%s: xcpng.datapath.Datapath.commit: Failed to commit: uri: %s" % (dbg, uri))
             raise Exception(e)
 
     def _open(self, dbg, uri, persistent):
@@ -195,7 +208,7 @@ class Datapath(object):
                     'domain_uuid': '0',
                     'implementation': [protocol, params]
                 }
-            elif platform.linux_distribution()[1] == '7.6.0':
+            elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
                 return {
                     'implementations': self._attach(dbg, uri, domain)
                 }
@@ -335,15 +348,33 @@ class QdiskDatapath(Datapath):
                       (dbg, uri))
             raise Exception(e)
 
-    def _commit(self, dbg, uri, parent, domain):
-        log.debug("%s: xcpng.QdiskDatapath._commit: uri: %s parent: %s domain: %s"
-                  % (dbg, uri, parent, domain))
+    def _commit(self, dbg, uri, child, parent, domain):
+        log.debug("%s: xcpng.QdiskDatapath._commit: uri: %s child: %s parent: %s domain: %s"
+                  % (dbg, uri, child, parent, domain))
+
+        child_img_qemu_uri = self.DatapathOpsHandler.gen_vol_uri(dbg, child)
+        parent_img_qemu_uri = self.DatapathOpsHandler.gen_vol_uri(dbg, parent)
 
         try:
             qemu_dp = self._load_qemu_dp(dbg, uri, domain)
-            qemu_dp.open(dbg)
+            qemu_dp.commit(dbg, child_img_qemu_uri, parent_img_qemu_uri)
         except Exception as e:
-            log.error("%s: xcpng.datapath.QdiskDatapath._activate: Failed to activate datapath for volume: uri: %s" %
+            log.error("%s: xcpng.datapath.QdiskDatapath._commit: Failed to commit changes for volume: uri: %s" %
+                      (dbg, uri))
+            raise Exception(e)
+
+    def _relink(self, dbg, uri, child, parent, domain):
+        log.debug("%s: xcpng.QdiskDatapath._relink: uri: %s child: %s parent: %s domain: %s"
+                  % (dbg, uri, child, parent, domain))
+
+        child_img_qemu_uri = self.DatapathOpsHandler.gen_vol_uri(dbg, child)
+        parent_img_qemu_uri = self.DatapathOpsHandler.gen_vol_uri(dbg, parent)
+
+        try:
+            qemu_dp = self._load_qemu_dp(dbg, uri, domain)
+            qemu_dp.relink(dbg, child_img_qemu_uri, parent_img_qemu_uri)
+        except Exception as e:
+            log.error("%s: xcpng.datapath.QdiskDatapath._relink: Failed to relink child for volume: uri: %s" %
                       (dbg, uri))
             raise Exception(e)
 
@@ -380,7 +411,7 @@ class QdiskDatapath(Datapath):
 
             if platform.linux_distribution()[1] == '7.5.0':
                 return (protocol, qemu_dp.params)
-            elif platform.linux_distribution()[1] == '7.6.0':
+            elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
                 implementations = [
                     [
                         'XenDisk',

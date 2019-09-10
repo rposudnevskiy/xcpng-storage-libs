@@ -21,7 +21,7 @@ import platform
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import Volume_skeleton
     from xapi.storage.api.v4.volume import Activated_on_another_host
-elif platform.linux_distribution()[1] == '7.6.0':
+elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
     from xapi.storage.api.v5.volume import Volume_skeleton
     from xapi.storage.api.v5.volume import Activated_on_another_host
 
@@ -276,19 +276,25 @@ class Volume(object):
     def _set_parent(self, dbg, sr, child, parent):
         raise NotImplementedError('Coalesce is not supported')
 
+    def commit(self, dbg, sr, child, parent):
+        self._commit(dbg, sr, child, parent)
+
+    def set_parent(self, dbg, sr, child, parent):
+        self._set_parent(dbg, sr, child, parent)
+
     def coalesce(self, dbg, sr, key):
 
         uri = "%s/%s" % (sr, key)
 
         try:
-            image_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
-            childs = self.MetadataHandler.find_vdi_children(dbg, uri)
+            volume_meta = self.MetadataHandler.get_vdi_meta(dbg, uri)
+            children = self.MetadataHandler.find_vdi_children(dbg, uri)
 
-            self._commit(dbg, sr, uri, image_meta[PARENT_URI_TAG])
+            self._commit(dbg, sr, uri, volume_meta[PARENT_URI_TAG])
 
-            for child in childs:
-                self._set_parent(dbg, sr, child[URI_TAG], image_meta[PARENT_URI_TAG])
-                meta = {PARENT_URI_TAG: image_meta[PARENT_URI_TAG]}
+            for child in children:
+                self._set_parent(dbg, sr, child[URI_TAG], volume_meta[PARENT_URI_TAG])
+                meta = {PARENT_URI_TAG: volume_meta[PARENT_URI_TAG]}
                 self.MetadataHandler.update_vdi_meta(dbg, child[URI_TAG], meta)
 
             self.destroy(dbg, sr, key)
@@ -362,11 +368,15 @@ class QCOW2Volume(RAWVolume):
         self.Datapathes[datapath].DatapathOpsHandler.unmap_vol(dbg, child, chained=None)
         self.Datapathes[datapath].DatapathOpsHandler.unmap_vol(dbg, parent, chained=None)
 
-    def _commit_online(self, dbg, sr, child, parent):
-        datapath = get_vdi_datapath_by_uri(dbg, sr)
+    def _commit_online(self, dbg, uri, child, parent):
+        datapath = get_vdi_datapath_by_uri(dbg, uri)
+        self.Datapathes[datapath].commit(dbg, uri, child, parent, 0)
 
 
-    def _set_parent(self, dbg, sr, child, parent):
+    def _set_parent_offline(self, dbg, sr, child, parent):
+        raise NotImplementedError('Coalesce is not supported')
+
+    def _relink_online(self, dbg, sr, child, parent):
         raise NotImplementedError('Coalesce is not supported')
 
     def _clone(self, dbg, sr, key, mode, base_meta):
