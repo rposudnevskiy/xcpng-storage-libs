@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+import xapi.storage.libs.xcpng.cluster_stack.consul.ha as ha
+from xapi.storage import log
+
+log.debug('HA ha_start_daemon')
+
+sf = ha.Statefile()
+sf.set_host(ha.consul_node_id, ha.Host(ha.xapi_host_uuid, True))
+
+# Start monitoring xapi's health
+ha.touch_signal_file()
+
+# We assume that xapi is the only one calling this script, therefore it must be
+# alive at this point, and we indicate that xapi is alive on this host by
+# joining the "xapi HA" lockspace. If xapi dies, the host will self-fence and
+# reboot, because we have started monitoring xapi's health above. If the host
+# does not reboot within the token timeout the other hosts will notice it and
+# fence it, and it will be removed from this lockspace. Even if it reboots
+# within the token timeout, it will remove itself from the old lockspaces at
+# startup. Thus the host will always leave the "xapi HA" lockspace, regardless
+# of how the host fails or how long it takes to reboot.
+ha.join_xapi_ha_lockspace()

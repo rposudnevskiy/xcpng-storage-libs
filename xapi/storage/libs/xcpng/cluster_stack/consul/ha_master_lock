@@ -1,0 +1,18 @@
+#!/usr/bin/env python
+import signal
+import xapi.storage.libs.xcpng.cluster_stack.consul.ha as ha
+import os
+from xapi.storage import log
+
+
+log.debug('HA Holding master lock forever')
+
+if ha.is_consul_leader():
+    sf = ha.Statefile()
+    sf.set_master(ha.Master(ha.xapi_host_uuid, os.getpid()))
+
+    # Hold the lock forever
+    signal.pause()
+else:
+    log.debug('HA Master lock already taken')
+

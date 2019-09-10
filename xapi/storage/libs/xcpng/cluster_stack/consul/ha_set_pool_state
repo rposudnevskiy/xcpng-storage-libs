@@ -1,0 +1,18 @@
+#!/usr/bin/env python
+import xapi.storage.libs.xcpng.cluster_stack.consul.ha as ha
+import sys
+from xapi.storage import log
+
+if len(sys.argv) == 2:
+
+    sf = ha.Statefile()
+
+    if sys.argv[1] == "init":
+        log.debug('HA ha_set_pool_state init')
+        sf.set_master(ha.Master(None, None))
+        sf.format_all_hosts()
+        sf.set_invalid(False)
+
+    elif sys.argv[1] == "invalid":
+        sf.set_invalid(True)
+        log.debug('HA ha_set_pool_state invalid')
