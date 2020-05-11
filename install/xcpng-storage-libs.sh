@@ -49,11 +49,10 @@ function uninstallPythonConsul {
 function installPythonConsul {
     echo "  Installing python-consul"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/cablehead/python-consul/archive/v${PYTHON_CONSUL_VERSION}.zip
-
-    copyFileForceX "python-consul-${PYTHON_CONSUL_VERSION}/consul" "/lib/python2.7/site-packages"
-    rm -rf "python-consul-${PYTHON_CONSUL_VERSION}"
+    wget -q https://github.com/cablehead/python-consul/archive/v${PYTHON_CONSUL_VERSION}.zip -O /tmp/v${PYTHON_CONSUL_VERSION}.zip
+    unzip /tmp/v${PYTHON_CONSUL_VERSION}.zip -d /tmp
+    copyFileForceX "/tmp/v${PYTHON_CONSUL_VERSION}/consul" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/v${PYTHON_CONSUL_VERSION}"
 }
 
 function uninstallSix {
@@ -65,11 +64,10 @@ function uninstallSix {
 function installSix {
     echo "  Installing six"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/benjaminp/six/archive/${SIX_SERVION}.zip
-    unzip ${SIX_SERVION}.zip
-    copyFileForceX "${SIX_SERVION}/six.py" "/lib/python2.7/site-packages"
-    rm -rf "${PYTHON_CONSUL_VERSION}"
+    wget -q https://github.com/benjaminp/six/archive/${SIX_SERVION}.zip -O /tmp/${SIX_SERVION}.zip
+    unzip /tmp/${SIX_SERVION}.zip -d /tmp
+    copyFileForceX "/tmp/${SIX_SERVION}/six.py" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/${PYTHON_CONSUL_VERSION}"
 }
 
 function uninstallUrllib3 {
@@ -81,11 +79,10 @@ function uninstallUrllib3 {
 function installUrllib3 {
     echo "  Installing urllib3"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/urllib3/urllib3/archive/${URLLIB3_VERSION}.zip
-    unzip ${URLLIB3_VERSION}.zip
-    copyFileForceX "${URLLIB3_VERSION}/src/urllib3" "/lib/python2.7/site-packages"
-    rm -rf "${URLLIB3_VERSION}"
+    wget -q https://github.com/urllib3/urllib3/archive/${URLLIB3_VERSION}.zip -O /tmp/${URLLIB3_VERSION}.zip
+    unzip /tmp/${URLLIB3_VERSION}.zip -d /tmp
+    copyFileForceX "/tmp/${URLLIB3_VERSION}/src/urllib3" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/${URLLIB3_VERSION}"
 }
 
 function uninstallPythonCertifi {
@@ -97,11 +94,10 @@ function uninstallPythonCertifi {
 function installPythonCertifi {
     echo "  Installing python-certifi"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/certifi/python-certifi/archive/${PYTHON_CERTIFI_VERSION}.zip
-    unzip ${PYTHON_CERTIFI_VERSION}.zip
-    copyFileForceX "${PYTHON_CERTIFI_VERSION}/certifi" "/lib/python2.7/site-packages"
-    rm -rf "${PYTHON_CERTIFI_VERSION}"
+    wget -q https://github.com/certifi/python-certifi/archive/${PYTHON_CERTIFI_VERSION}.zip -O /tmp/${PYTHON_CERTIFI_VERSION}.zip
+    unzip /tmp/${PYTHON_CERTIFI_VERSION}.zip -d /tmp
+    copyFileForceX "/tmp/${PYTHON_CERTIFI_VERSION}/certifi" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/${PYTHON_CERTIFI_VERSION}"
 }
 
 function uninstallChardet {
@@ -113,11 +109,10 @@ function uninstallChardet {
 function installChardet {
     echo "  Installing chardet"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/chardet/chardet/archive/${CHARDET_VERSION}.zip
-    unzip ${CHARDET_VERSION}.zip
-    copyFileForceX "${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages"
-    rm -rf "${CHARDET_VERSION}"
+    wget -q https://github.com/chardet/chardet/archive/${CHARDET_VERSION}.zip -O /tmp/${CHARDET_VERSION}.zip
+    unzip ${CHARDET_VERSION}.zip -d /tmp
+    copyFileForceX "/tmp/${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/${CHARDET_VERSION}"
 }
 
 function uninstallRequests {
@@ -129,11 +124,10 @@ function uninstallRequests {
 function installRequests {
     echo "  Installing requests"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/psf/requests/archive/v${REQUESTS_VERSION}.zip
-    unzip v${REQUESTS_VERSION}.zip
-    copyFileForceX "${REQUESTS_VERSION}/requests" "/lib/python2.7/site-packages"
-    rm -rf "${REQUESTS_VERSION}"
+    wget -q https://github.com/psf/requests/archive/v${REQUESTS_VERSION}.zip -O /tmp/v${REQUESTS_VERSION}.zip
+    unzip /tmp/v${REQUESTS_VERSION}.zip -d /tmp
+    copyFileForceX "/tmp/${REQUESTS_VERSION}/requests" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/${REQUESTS_VERSION}"
 }
 
 function uninstallIdna {
@@ -145,11 +139,10 @@ function uninstallIdna {
 function installIdna {
     echo "  Installing idna"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/kjd/idna/archive/v${IDNA_VERSION}.zip
-    unzip v${IDNA_VERSION}.zip
-    copyFileForceX "v${IDNA_VERSION}/idna" "/lib/python2.7/site-packages"
-    rm -rf "v${REQUESTS_VERSION}"
+    wget -q https://github.com/kjd/idna/archive/v${IDNA_VERSION}.zip -O /tmp/v${IDNA_VERSION}.zip
+    unzip /tmp/v${IDNA_VERSION}.zip -d /tmp
+    copyFileForceX "/tmp/v${IDNA_VERSION}/idna" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/v${REQUESTS_VERSION}"
 }
 
 function uninstallTinyDB {
@@ -161,11 +154,10 @@ function uninstallTinyDB {
 function installTinyDB {
     echo "  Installing TinyDB"
 
-    cd /tmp
-    curl --silent --remote-name https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip
-    unzip v${TINYDB_VERSION}.zip
-    copyFileForceX "v${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages"
-    rm -rf "v${REQUESTS_VERSION}"
+    wget -q https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip -O /tmp/v${TINYDB_VERSION}.zip
+    unzip /tmp/v${TINYDB_VERSION}.zip
+    copyFileForceX "/tmp/v${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages"
+    rm -rf "/tmp/v${REQUESTS_VERSION}"
 }
 
 function uninstallConsul {
@@ -188,11 +180,10 @@ function uninstallConsul {
 function installConsul {
     echo "  Installing Consul"
 
-    cd /tmp
-    curl --silent --remote-name https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip
-    unzip consul_${CONSUL_VERSION}_linux_amd64.zip
-    chown root:root consul
-    mv consul /usr/local/bin/
+    wget -q https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip -O /tmp/consul_${CONSUL_VERSION}_linux_amd64.zip
+    unzip /tmp/consul_${CONSUL_VERSION}_linux_amd64.zip -d /tmp
+    chown root:root /tmp/consul
+    mv /tmp/consul /usr/local/bin/
     consul -autocomplete-install
 
     useradd --system --home /etc/consul.d --shell /bin/false consul
