@@ -51,7 +51,7 @@ function installPythonConsul {
 
     wget -q https://github.com/cablehead/python-consul/archive/v${PYTHON_CONSUL_VERSION}.zip -O /tmp/v${PYTHON_CONSUL_VERSION}.zip
     unzip -qq /tmp/v${PYTHON_CONSUL_VERSION}.zip -d /tmp
-    copyFileForceX "/tmp/python-consul-${PYTHON_CONSUL_VERSION}/consul" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/python-consul-${PYTHON_CONSUL_VERSION}/consul" "/lib/python2.7/site-packages/consul"
     rm -rf "/tmp/python-consul-${PYTHON_CONSUL_VERSION}"
     rm -f /tmp/v${PYTHON_CONSUL_VERSION}.zip
 }
@@ -67,7 +67,7 @@ function installSix {
 
     wget -q https://github.com/benjaminp/six/archive/${SIX_SERVION}.zip -O /tmp/${SIX_SERVION}.zip
     unzip /tmp/${SIX_SERVION}.zip -d /tmp
-    copyFileForceX "/tmp/six-${SIX_SERVION}/six.py" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/six-${SIX_SERVION}/six.py" "/lib/python2.7/site-packages/six.py"
     rm -rf "/tmp/six-${PYTHON_CONSUL_VERSION}"
     rm -f /tmp/${SIX_SERVION}.zip
 }
@@ -83,7 +83,7 @@ function installUrllib3 {
 
     wget -q https://github.com/urllib3/urllib3/archive/${URLLIB3_VERSION}.zip -O /tmp/${URLLIB3_VERSION}.zip
     unzip /tmp/${URLLIB3_VERSION}.zip -d /tmp
-    copyFileForceX "/tmp/urllib3-${URLLIB3_VERSION}/src/urllib3" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/urllib3-${URLLIB3_VERSION}/src/urllib3" "/lib/python2.7/site-packages/urllib3"
     rm -rf "/tmp/urllib3-${URLLIB3_VERSION}"
     rm -f /tmp/${URLLIB3_VERSION}.zip
 }
@@ -99,7 +99,7 @@ function installPythonCertifi {
 
     wget -q https://github.com/certifi/python-certifi/archive/${PYTHON_CERTIFI_VERSION}.zip -O /tmp/${PYTHON_CERTIFI_VERSION}.zip
     unzip /tmp/${PYTHON_CERTIFI_VERSION}.zip -d /tmp
-    copyFileForceX "/tmp/python-certifi-${PYTHON_CERTIFI_VERSION}/certifi" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/python-certifi-${PYTHON_CERTIFI_VERSION}/certifi" "/lib/python2.7/site-packages/certifi"
     rm -rf "/tmp/python-certifi-${PYTHON_CERTIFI_VERSION}"
     rm -f /tmp/${PYTHON_CERTIFI_VERSION}.zip
 }
@@ -115,7 +115,7 @@ function installChardet {
 
     wget -q https://github.com/chardet/chardet/archive/${CHARDET_VERSION}.zip -O /tmp/${CHARDET_VERSION}.zip
     unzip ${CHARDET_VERSION}.zip -d /tmp
-    copyFileForceX "/tmp/chardet-${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/chardet-${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages/chardet"
     rm -rf "/tmp/chardet-${CHARDET_VERSION}"
     rm -f ${CHARDET_VERSION}.zip
 }
@@ -131,7 +131,7 @@ function installRequests {
 
     wget -q https://github.com/psf/requests/archive/v${REQUESTS_VERSION}.zip -O /tmp/v${REQUESTS_VERSION}.zip
     unzip /tmp/v${REQUESTS_VERSION}.zip -d /tmp
-    copyFileForceX "/tmp/requests-${REQUESTS_VERSION}/requests" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/requests-${REQUESTS_VERSION}/requests" "/lib/python2.7/site-packages/requests"
     rm -rf "/tmp/requests-${REQUESTS_VERSION}"
     rm -f /tmp/v${REQUESTS_VERSION}.zip
 }
@@ -147,7 +147,7 @@ function installIdna {
 
     wget -q https://github.com/kjd/idna/archive/v${IDNA_VERSION}.zip -O /tmp/v${IDNA_VERSION}.zip
     unzip /tmp/v${IDNA_VERSION}.zip -d /tmp
-    copyFileForceX "/tmp/idna-v${IDNA_VERSION}/idna" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/idna-v${IDNA_VERSION}/idna" "/lib/python2.7/site-packages/idna"
     rm -rf "/tmp/idna-v${REQUESTS_VERSION}"
     rm -f /tmp/v${IDNA_VERSION}.zip
 }
@@ -163,7 +163,7 @@ function installTinyDB {
 
     wget -q https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip -O /tmp/v${TINYDB_VERSION}.zip
     unzip /tmp/v${TINYDB_VERSION}.zip
-    copyFileForceX "/tmp/tinydb-v${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages"
+    copyFileForceX "/tmp/tinydb-v${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages/tinydb"
     rm -rf "/tmp/tinydb-v${REQUESTS_VERSION}"
     rm -f /tmp/v${TINYDB_VERSION}.zip
 }
