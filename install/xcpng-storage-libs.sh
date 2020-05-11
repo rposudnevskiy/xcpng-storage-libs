@@ -114,7 +114,7 @@ function installChardet {
     echo "  Installing chardet"
 
     wget -q https://github.com/chardet/chardet/archive/${CHARDET_VERSION}.zip -O /tmp/${CHARDET_VERSION}.zip
-    unzip -qq ${CHARDET_VERSION}.zip -d /tmp
+    unzip -qq /tmp/${CHARDET_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/chardet-${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages/chardet"
     rm -rf "/tmp/chardet-${CHARDET_VERSION}"
     rm -f ${CHARDET_VERSION}.zip
@@ -147,8 +147,8 @@ function installIdna {
 
     wget -q https://github.com/kjd/idna/archive/v${IDNA_VERSION}.zip -O /tmp/v${IDNA_VERSION}.zip
     unzip -qq /tmp/v${IDNA_VERSION}.zip -d /tmp
-    copyFileForceX "/tmp/idna-v${IDNA_VERSION}/idna" "/lib/python2.7/site-packages/idna"
-    rm -rf "/tmp/idna-v${REQUESTS_VERSION}"
+    copyFileForceX "/tmp/idna-${IDNA_VERSION}/idna" "/lib/python2.7/site-packages/idna"
+    rm -rf "/tmp/idna-${REQUESTS_VERSION}"
     rm -f /tmp/v${IDNA_VERSION}.zip
 }
 
@@ -163,8 +163,8 @@ function installTinyDB {
 
     wget -q https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip -O /tmp/v${TINYDB_VERSION}.zip
     unzip -qq /tmp/v${TINYDB_VERSION}.zip
-    copyFileForceX "/tmp/tinydb-v${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages/tinydb"
-    rm -rf "/tmp/tinydb-v${REQUESTS_VERSION}"
+    copyFileForceX "/tmp/tinydb-${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages/tinydb"
+    rm -rf "/tmp/tinydb-${REQUESTS_VERSION}"
     rm -f /tmp/v${TINYDB_VERSION}.zip
 }
 
