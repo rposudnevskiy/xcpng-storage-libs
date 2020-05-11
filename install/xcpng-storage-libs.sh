@@ -67,9 +67,9 @@ function installSix {
 
     cd /tmp
     curl --silent --remote-name https://github.com/benjaminp/six/archive/${SIX_SERVION}.zip
-
-    copyFileForceX "six-${SIX_SERVION}/six.py" "/lib/python2.7/site-packages"
-    rm -rf "six-${PYTHON_CONSUL_VERSION}"
+    unzip ${SIX_SERVION}.zip
+    copyFileForceX "${SIX_SERVION}/six.py" "/lib/python2.7/site-packages"
+    rm -rf "${PYTHON_CONSUL_VERSION}"
 }
 
 function uninstallUrllib3 {
@@ -83,9 +83,9 @@ function installUrllib3 {
 
     cd /tmp
     curl --silent --remote-name https://github.com/urllib3/urllib3/archive/${URLLIB3_VERSION}.zip
-
-    copyFileForceX "urllib3-${URLLIB3_VERSION}/src/urllib3" "/lib/python2.7/site-packages"
-    rm -rf "urllib3-${URLLIB3_VERSION}"
+    unzip ${URLLIB3_VERSION}.zip
+    copyFileForceX "${URLLIB3_VERSION}/src/urllib3" "/lib/python2.7/site-packages"
+    rm -rf "${URLLIB3_VERSION}"
 }
 
 function uninstallPythonCertifi {
@@ -99,9 +99,9 @@ function installPythonCertifi {
 
     cd /tmp
     curl --silent --remote-name https://github.com/certifi/python-certifi/archive/${PYTHON_CERTIFI_VERSION}.zip
-
-    copyFileForceX "python-certifi-${PYTHON_CERTIFI_VERSION}/certifi" "/lib/python2.7/site-packages"
-    rm -rf "python-certifi-${PYTHON_CERTIFI_VERSION}"
+    unzip ${PYTHON_CERTIFI_VERSION}.zip
+    copyFileForceX "${PYTHON_CERTIFI_VERSION}/certifi" "/lib/python2.7/site-packages"
+    rm -rf "${PYTHON_CERTIFI_VERSION}"
 }
 
 function uninstallChardet {
@@ -115,9 +115,9 @@ function installChardet {
 
     cd /tmp
     curl --silent --remote-name https://github.com/chardet/chardet/archive/${CHARDET_VERSION}.zip
-
-    copyFileForceX "chardet-${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages"
-    rm -rf "chardet-${CHARDET_VERSION}"
+    unzip ${CHARDET_VERSION}.zip
+    copyFileForceX "${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages"
+    rm -rf "${CHARDET_VERSION}"
 }
 
 function uninstallRequests {
@@ -131,9 +131,9 @@ function installRequests {
 
     cd /tmp
     curl --silent --remote-name https://github.com/psf/requests/archive/v${REQUESTS_VERSION}.zip
-
-    copyFileForceX "requests-${REQUESTS_VERSION}/requests" "/lib/python2.7/site-packages"
-    rm -rf "requests-${REQUESTS_VERSION}"
+    unzip v${REQUESTS_VERSION}.zip
+    copyFileForceX "${REQUESTS_VERSION}/requests" "/lib/python2.7/site-packages"
+    rm -rf "${REQUESTS_VERSION}"
 }
 
 function uninstallIdna {
@@ -147,9 +147,9 @@ function installIdna {
 
     cd /tmp
     curl --silent --remote-name https://github.com/kjd/idna/archive/v${IDNA_VERSION}.zip
-
-    copyFileForceX "idna-${IDNA_VERSION}/idna" "/lib/python2.7/site-packages"
-    rm -rf "idna-${REQUESTS_VERSION}"
+    unzip v${IDNA_VERSION}.zip
+    copyFileForceX "v${IDNA_VERSION}/idna" "/lib/python2.7/site-packages"
+    rm -rf "v${REQUESTS_VERSION}"
 }
 
 function uninstallTinyDB {
@@ -163,9 +163,9 @@ function installTinyDB {
 
     cd /tmp
     curl --silent --remote-name https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip
-
-    copyFileForceX "tinydb-${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages"
-    rm -rf "tinydb-${REQUESTS_VERSION}"
+    unzip v${TINYDB_VERSION}.zip
+    copyFileForceX "v${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages"
+    rm -rf "v${REQUESTS_VERSION}"
 }
 
 function uninstallConsul {
