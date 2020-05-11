@@ -13,13 +13,13 @@ PYTHON_CONSUL_VERSION="1.1.0"
 # Usage: copyFileForceX <source path> <destination path>
 function copyFileForceX {
     cp -rf $1 $2
-    chmod -r 755 $2
+    chmod -R 755 $2
 }
 
 # Usage: copyFileForceX <source path> <destination path>
 function copyFileForce {
     cp -rf $1 $2
-    chmod -r 744 $2
+    chmod -R 744 $2
 }
 
 function uninstallQemubackService {
@@ -66,7 +66,7 @@ function installSix {
     echo "  Installing six"
 
     wget -q https://github.com/benjaminp/six/archive/${SIX_SERVION}.zip -O /tmp/${SIX_SERVION}.zip
-    unzip /tmp/${SIX_SERVION}.zip -d /tmp
+    unzip -qq /tmp/${SIX_SERVION}.zip -d /tmp
     copyFileForceX "/tmp/six-${SIX_SERVION}/six.py" "/lib/python2.7/site-packages/six.py"
     rm -rf "/tmp/six-${PYTHON_CONSUL_VERSION}"
     rm -f /tmp/${SIX_SERVION}.zip
@@ -82,7 +82,7 @@ function installUrllib3 {
     echo "  Installing urllib3"
 
     wget -q https://github.com/urllib3/urllib3/archive/${URLLIB3_VERSION}.zip -O /tmp/${URLLIB3_VERSION}.zip
-    unzip /tmp/${URLLIB3_VERSION}.zip -d /tmp
+    unzip -qq /tmp/${URLLIB3_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/urllib3-${URLLIB3_VERSION}/src/urllib3" "/lib/python2.7/site-packages/urllib3"
     rm -rf "/tmp/urllib3-${URLLIB3_VERSION}"
     rm -f /tmp/${URLLIB3_VERSION}.zip
@@ -98,7 +98,7 @@ function installPythonCertifi {
     echo "  Installing python-certifi"
 
     wget -q https://github.com/certifi/python-certifi/archive/${PYTHON_CERTIFI_VERSION}.zip -O /tmp/${PYTHON_CERTIFI_VERSION}.zip
-    unzip /tmp/${PYTHON_CERTIFI_VERSION}.zip -d /tmp
+    unzip -qq /tmp/${PYTHON_CERTIFI_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/python-certifi-${PYTHON_CERTIFI_VERSION}/certifi" "/lib/python2.7/site-packages/certifi"
     rm -rf "/tmp/python-certifi-${PYTHON_CERTIFI_VERSION}"
     rm -f /tmp/${PYTHON_CERTIFI_VERSION}.zip
@@ -114,7 +114,7 @@ function installChardet {
     echo "  Installing chardet"
 
     wget -q https://github.com/chardet/chardet/archive/${CHARDET_VERSION}.zip -O /tmp/${CHARDET_VERSION}.zip
-    unzip ${CHARDET_VERSION}.zip -d /tmp
+    unzip -qq ${CHARDET_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/chardet-${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages/chardet"
     rm -rf "/tmp/chardet-${CHARDET_VERSION}"
     rm -f ${CHARDET_VERSION}.zip
@@ -130,7 +130,7 @@ function installRequests {
     echo "  Installing requests"
 
     wget -q https://github.com/psf/requests/archive/v${REQUESTS_VERSION}.zip -O /tmp/v${REQUESTS_VERSION}.zip
-    unzip /tmp/v${REQUESTS_VERSION}.zip -d /tmp
+    unzip -qq /tmp/v${REQUESTS_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/requests-${REQUESTS_VERSION}/requests" "/lib/python2.7/site-packages/requests"
     rm -rf "/tmp/requests-${REQUESTS_VERSION}"
     rm -f /tmp/v${REQUESTS_VERSION}.zip
@@ -146,7 +146,7 @@ function installIdna {
     echo "  Installing idna"
 
     wget -q https://github.com/kjd/idna/archive/v${IDNA_VERSION}.zip -O /tmp/v${IDNA_VERSION}.zip
-    unzip /tmp/v${IDNA_VERSION}.zip -d /tmp
+    unzip -qq /tmp/v${IDNA_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/idna-v${IDNA_VERSION}/idna" "/lib/python2.7/site-packages/idna"
     rm -rf "/tmp/idna-v${REQUESTS_VERSION}"
     rm -f /tmp/v${IDNA_VERSION}.zip
@@ -162,7 +162,7 @@ function installTinyDB {
     echo "  Installing TinyDB"
 
     wget -q https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip -O /tmp/v${TINYDB_VERSION}.zip
-    unzip /tmp/v${TINYDB_VERSION}.zip
+    unzip -qq /tmp/v${TINYDB_VERSION}.zip
     copyFileForceX "/tmp/tinydb-v${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages/tinydb"
     rm -rf "/tmp/tinydb-v${REQUESTS_VERSION}"
     rm -f /tmp/v${TINYDB_VERSION}.zip
@@ -189,7 +189,7 @@ function installConsul {
     echo "  Installing Consul"
 
     wget -q https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip -O /tmp/consul_${CONSUL_VERSION}_linux_amd64.zip
-    unzip /tmp/consul_${CONSUL_VERSION}_linux_amd64.zip -d /tmp
+    unzip -qq /tmp/consul_${CONSUL_VERSION}_linux_amd64.zip -d /tmp
     rm -f /tmp/consul_${CONSUL_VERSION}_linux_amd64.zip
     chown root:root /tmp/consul
     mv /tmp/consul /usr/local/bin/
