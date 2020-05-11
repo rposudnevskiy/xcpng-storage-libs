@@ -4,7 +4,7 @@ PROJECT="xcpng-storage-libs"
 BRANCH="master"
 
 cd ~
-wget "$REPO/$PROJECT/archive/$BRANCH.zip" -O ~/$PROJECT-temp.zip
+wget -q "$REPO/$PROJECT/archive/$BRANCH.zip" -O ~/$PROJECT-temp.zip
 unzip ~/$PROJECT-temp.zip -d ~
 cd ~/$PROJECT-$BRANCH/install
 
