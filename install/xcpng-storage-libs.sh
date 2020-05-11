@@ -162,7 +162,7 @@ function installTinyDB {
     echo "  Installing TinyDB"
 
     wget -q https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip -O /tmp/v${TINYDB_VERSION}.zip
-    unzip -qq /tmp/v${TINYDB_VERSION}.zip
+    unzip -qq /tmp/v${TINYDB_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/tinydb-${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages/tinydb"
     rm -rf "/tmp/tinydb-${REQUESTS_VERSION}"
     rm -f /tmp/v${TINYDB_VERSION}.zip
@@ -311,6 +311,7 @@ function installFiles {
 
     mkdir -p /lib/python2.7/site-packages/xapi/storage/libs/xcpng/cluster_stack
     copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/__init__.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/cluster_stack/__init__.py"
+    mkdir -p /lib/python2.7/site-packages/xapi/storage/libs/xcpng/cluster_stack/consul
     copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/__init__.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/cluster_stack/consul/__init__.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/ha.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/cluster_stack/consul/ha.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/locks.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/cluster_stack/consul/locks.py"
