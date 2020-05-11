@@ -182,7 +182,9 @@ class Qemudisk(object):
                     os.unlink(path)
                 except Exception:
                     log.debug("%s: xcpng.qemudisk.Qemudisk.close: There was no xenstore setup" % dbg)
-            elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
+            elif platform.linux_distribution()[1] == '7.6.0' or \
+                platform.linux_distribution()[1] == '8.0.0' or \
+                platform.linux_distribution()[1] == '8.1.0':
                 path = "{}/{}".format(utils.VAR_RUN_PREFIX, self.vdi_uuid)
                 try:
                     with open(path, 'r') as f:

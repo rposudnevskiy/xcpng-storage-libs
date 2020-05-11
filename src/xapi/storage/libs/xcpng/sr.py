@@ -13,7 +13,9 @@ from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_known_srs, get_sr_
 
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import SR_skeleton
-elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
+elif platform.linux_distribution()[1] == '7.6.0' or \
+    platform.linux_distribution()[1] == '8.0.0' or \
+    platform.linux_distribution()[1] == '8.1.0':
     from xapi.storage.api.v5.volume import SR_skeleton
 
 class SROperations(object):

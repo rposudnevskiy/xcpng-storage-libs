@@ -15,7 +15,7 @@ class LocksOpsMgr(_LocksOpsMgr_):
         self.__consul = consul.Consul()
 
     def lock(self, dbg, uri, timeout=10):
-        log.debug("%s: xcpng.cluster-stack.locks.lock: uri: %s timeout %s" % (dbg, uri, timeout))
+        log.debug("%s: xcpng.cluster-stack.consul.locks.lock: uri: %s timeout %s" % (dbg, uri, timeout))
 
         sr_uuid = get_sr_uuid_by_uri(dbg, uri)
         vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)
@@ -46,17 +46,17 @@ class LocksOpsMgr(_LocksOpsMgr_):
                     break
                 except Exception as e:
                     if time() - start_time >= timeout:
-                        log.error("%s: xcpng.cluster-stack.locks.lock: Failed to lock: uri: %s" % (dbg, uri))
+                        log.error("%s: xcpng.cluster-stack.consul.locks.lock: Failed to lock: uri: %s" % (dbg, uri))
                         raise Exception(e)
                     sleep(1)
                     pass
         except Exception as e:
-            log.error("%s: xcpng.librbd.meta.MetaDBOpeations.lock: Failed to lock: uri: %s"
+            log.error("%s: xcpng.cluster-stack.consul.locks.lock: Failed to lock: uri: %s"
                       % (dbg, uri))
             raise Exception(e)
 
     def unlock(self, dbg, uri):
-        log.debug("%s: xcpng.cluster-stack.locks.unlock: uri: %s" % (dbg, uri))
+        log.debug("%s: xcpng.cluster-stack.consul.locks.unlock: uri: %s" % (dbg, uri))
 
         sr_uuid = get_sr_uuid_by_uri(dbg, uri)
         vdi_uuid = get_vdi_uuid_by_uri(dbg, uri)

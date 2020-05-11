@@ -21,7 +21,9 @@ import platform
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import Volume_skeleton
     from xapi.storage.api.v4.volume import Activated_on_another_host
-elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
+elif platform.linux_distribution()[1] == '7.6.0' or \
+    platform.linux_distribution()[1] == '8.0.0' or \
+    platform.linux_distribution()[1] == '8.1.0':
     from xapi.storage.api.v5.volume import Volume_skeleton
     from xapi.storage.api.v5.volume import Activated_on_another_host
 
