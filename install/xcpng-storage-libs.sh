@@ -68,7 +68,7 @@ function installSix {
     wget -q https://github.com/benjaminp/six/archive/${SIX_SERVION}.zip -O /tmp/${SIX_SERVION}.zip
     unzip -qq /tmp/${SIX_SERVION}.zip -d /tmp
     copyFileForceX "/tmp/six-${SIX_SERVION}/six.py" "/lib/python2.7/site-packages/six.py"
-    rm -rf "/tmp/six-${PYTHON_CONSUL_VERSION}"
+    rm -rf "/tmp/six-${SIX_SERVION}"
     rm -f /tmp/${SIX_SERVION}.zip
 }
 
@@ -148,7 +148,7 @@ function installIdna {
     wget -q https://github.com/kjd/idna/archive/v${IDNA_VERSION}.zip -O /tmp/v${IDNA_VERSION}.zip
     unzip -qq /tmp/v${IDNA_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/idna-${IDNA_VERSION}/idna" "/lib/python2.7/site-packages/idna"
-    rm -rf "/tmp/idna-${REQUESTS_VERSION}"
+    rm -rf "/tmp/idna-${IDNA_VERSION}"
     rm -f /tmp/v${IDNA_VERSION}.zip
 }
 
@@ -231,7 +231,7 @@ EOF
     #xe pif-param-list uuid=`xe pif-list management=true | grep "^uuid ( RO)" | awk -F: '{print $2}' | sed "s/ //g"` | grep "IP ( RO):" | awk -F: '{print $2}' | sed "s/ //g"
     cat <<EOF > /etc/consul.d/consul.hcl
 datacenter = "dc1"
-bind = "{{ GetInterfaceIP "xenbr0" }}"
+bind_addr = "{{ GetInterfaceIP \"xenbr0\" }}"
 data_dir = "/opt/consul"
 encrypt = "`/usr/local/bin/consul keygen`"
 
@@ -326,7 +326,7 @@ function installFiles {
     copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/ha_set_pool_state" "/usr/libexec/xapi/cluster-stack/consul/ha_set_pool_state"
     copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/ha_start_daemon" "/usr/libexec/xapi/cluster-stack/consul/ha_start_daemon"
     copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/ha_stop_daemon" "/usr/libexec/xapi/cluster-stack/consul/ha_stop_daemon"
-    copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/ha_suppoted_srs" "/usr/libexec/xapi/cluster-stack/consul/ha_supported_srs"
+    copyFileForceX "src/xapi/storage/libs/xcpng/cluster_stack/consul/ha_supported_srs" "/usr/libexec/xapi/cluster-stack/consul/ha_supported_srs"
 
     mkdir -p /lib/python2.7/site-packages/xapi/storage/libs/xcpng/scripts
     copyFileForceX "src/xapi/storage/libs/xcpng/scripts/__init__.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/scripts/__init__.py"
@@ -348,7 +348,7 @@ function installFiles {
     copyFileForceX "src/xapi/storage/libs/xcpng/utils.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/utils.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/volume.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/volume.py"
 
-    ln -s "/usr/share/qemu/qmp/qmp.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/qmp.py"
+    ln -f -s "/usr/share/qemu/qmp/qmp.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/qmp.py"
 }
 
 function install {
