@@ -164,7 +164,7 @@ function installTinyDB {
     wget -q https://github.com/msiemens/tinydb/archive/v${TINYDB_VERSION}.zip -O /tmp/v${TINYDB_VERSION}.zip
     unzip -qq /tmp/v${TINYDB_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/tinydb-${TINYDB_VERSION}/tinydb" "/lib/python2.7/site-packages/tinydb"
-    rm -rf "/tmp/tinydb-${REQUESTS_VERSION}"
+    rm -rf "/tmp/tinydb-${TINYDB_VERSION}"
     rm -f /tmp/v${TINYDB_VERSION}.zip
 }
 
