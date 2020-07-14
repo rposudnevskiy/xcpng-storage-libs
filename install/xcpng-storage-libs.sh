@@ -193,9 +193,9 @@ function installConsul {
     rm -f /tmp/consul_${CONSUL_VERSION}_linux_amd64.zip
     chown root:root /tmp/consul
     mv /tmp/consul /usr/local/bin/
-    consul -autocomplete-install
+    consul -autocomplete-install >/dev/null 2>&1
 
-    useradd --system --home /etc/consul.d --shell /bin/false consul
+    id -u consul >/dev/null 2>&1 || useradd --system --home /etc/consul.d --shell /bin/false consul
     mkdir --parents /opt/consul
     chown --recursive consul:consul /opt/consul
 
@@ -210,11 +210,12 @@ After=network-online.target
 ConditionFileNotEmpty=/etc/consul.d/consul.hcl
 
 [Service]
-Type=notify
+Type=exec
 User=consul
 Group=consul
 ExecStart=/usr/local/bin/consul agent -config-dir=/etc/consul.d/
 ExecReload=/usr/local/bin/consul reload
+ExecStop=/usr/local/bin/consul leave
 KillMode=process
 Restart=on-failure
 LimitNOFILE=65536
