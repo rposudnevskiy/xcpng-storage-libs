@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-CONSUL_VERSION="1.7.0"
+CONSUL_VERSION="1.11.4"
 TINYDB_VERSION="3.15.2"
 IDNA_VERSION="2.8"
 REQUESTS_VERSION="2.22.0"
@@ -22,6 +22,16 @@ function copyFileForce {
     chmod -R 744 $2
 }
 
+function installNbd {
+    echo "Install NBD Client"
+    yum install --enablerepo="epel" -y nbd
+}
+
+function uninstallNbd {
+    echo "Uninstall NBD Client"
+    yum erase -y nbd
+}
+
 function uninstallQemubackService {
     if [ `cat /etc/redhat-release | awk '{print $1}'` = "XCP-ng" ]; then
         echo "Uninstalling Qemuback service"
@@ -38,6 +48,22 @@ function installQemubackService {
         copyFileForceX "src/qemuback/qemuback.service" "/usr/lib/systemd/system/qemuback.service"
         copyFileForceX "src/qemuback/qemuback.py" "/usr/bin/qemuback.py"
     fi
+}
+
+function installQemudp {
+    echo "  Installing Qemu-dp" cut -d" " -f3 /etc/redhat-release | cut -c1-3
+
+    wget -q -r -R 'index.html*' -e robots=off \
+      --accept-regex 'qemu-dp-xcpng-[[:digit:].]*-[[:digit:].]*.x86_64.rpm' \
+      https://github.com/rposudnevskiy/qemu-dp/releases/tag/qemu-dp-xcpng-`cut -d" " -f3 /etc/redhat-release | cut -c1-3`/ \
+      -O /tmp/qemu-dp-xcpng.x86_64.rpm
+    yum install -y /tmp/qemu-dp-xcpng.x86_64.rpm
+    rm -f /tmp/qemu-dp-xcpng.x86_64.rpm
+}
+
+function uninstallQemudp {
+    echo "  Uninstalling Qemu-dp"
+    yum erase -y qemu-dp
 }
 
 function uninstallPythonConsul {
@@ -117,7 +143,7 @@ function installChardet {
     unzip -qq /tmp/${CHARDET_VERSION}.zip -d /tmp
     copyFileForceX "/tmp/chardet-${CHARDET_VERSION}/chardet" "/lib/python2.7/site-packages/chardet"
     rm -rf "/tmp/chardet-${CHARDET_VERSION}"
-    rm -f ${CHARDET_VERSION}.zip
+    rm -f /tmp/${CHARDET_VERSION}.zip
 }
 
 function uninstallRequests {
@@ -180,6 +206,7 @@ function uninstallConsul {
     rm -f "/etc/systemd/system/consul.service"
     rm -rf "/etc/consul.d"
     rm -f "/usr/local/bin/consul"
+    rm -f "/usr/local/bin/consul_startup.sh"
     rm -rf "/opt/consul"
 
     userdel consul
@@ -199,57 +226,15 @@ function installConsul {
     mkdir --parents /opt/consul
     chown --recursive consul:consul /opt/consul
 
-    touch /etc/systemd/system/consul.service
-
-    cat <<EOF > /etc/systemd/system/consul.service
-[Unit]
-Description="HashiCorp Consul - A service mesh solution"
-Documentation=https://www.consul.io/
-Requires=network-online.target
-After=network-online.target
-ConditionFileNotEmpty=/etc/consul.d/consul.hcl
-
-[Service]
-Type=exec
-User=consul
-Group=consul
-ExecStart=/usr/local/bin/consul agent -config-dir=/etc/consul.d/
-ExecReload=/usr/local/bin/consul reload
-ExecStop=/usr/local/bin/consul leave
-KillMode=process
-Restart=on-failure
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    copyFileForce "src/consul/consul.service" "/etc/systemd/system/consul.service"
 
     mkdir --parents /etc/consul.d
-    touch /etc/consul.d/consul.hcl
+    copyFileForce "src/consul/consul.hcl" "/etc/consul.d/consul.hcl"
     chown --recursive consul:consul /etc/consul.d
     chmod 640 /etc/consul.d/consul.hcl
 
-    #xe pif-param-list uuid=`xe pif-list management=true | grep "^uuid ( RO)" | awk -F: '{print $2}' | sed "s/ //g"` | grep "IP ( RO):" | awk -F: '{print $2}' | sed "s/ //g"
-    cat <<EOF > /etc/consul.d/consul.hcl
-datacenter = "dc1"
-bind_addr = "{{ GetInterfaceIP \"xenbr0\" }}"
-data_dir = "/opt/consul"
-encrypt = "`/usr/local/bin/consul keygen`"
-
-performance {
-  raft_multiplier = 1
-}
-EOF
-
-    mkdir --parents /etc/consul.d
-    touch /etc/consul.d/server.hcl
-    chown --recursive consul:consul /etc/consul.d
-    chmod 640 /etc/consul.d/server.hcl
-
-    cat <<EOF > /etc/consul.d/server.hcl
-server = true
-ui = true
-EOF
+    copyFileForce "src/consul/consul_startup.sh" "/usr/local/bin/consul_startup.sh"
+    chmod 640 /usr/local/bin/consul_startup.sh
 
     echo "  Starting Consul Service"
     systemctl enable consul
@@ -269,6 +254,9 @@ function uninstallDependencies {
     uninstallPythonCertifi
     uninstallRequests
     uninstallUrllib3
+    uninstallNbd
+    uninstallQemudp
+    uninstallQemubackService
 }
 
 function installDependencies {
@@ -282,21 +270,40 @@ function installDependencies {
     installUrllib3
     installTinyDB
     installPythonConsul
+    installNbd
     installConsul
+    installQemudp
+    installQemubackService
 }
 
 function configureFirewall {
     #iptables -A INPUT -p tcp --dport 6789 -j ACCEPT
     #iptables -A INPUT -m multiport -p tcp --dports 6800:7300 -j ACCEPT
-    #service iptables save
-    :
+
+    # Configure Consul ports
+    iptables -A INPUT -p tcp --dport 8300 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 8301 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 8302 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 8500 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 8600 -j ACCEPT
+
+    service iptables save
+    #:
 }
 
 function unconfigureFirewall {
     #iptables -D INPUT -p tcp --dport 6789 -j ACCEPT
     #iptables -D INPUT -m multiport -p tcp --dports 6800:7300 -j ACCEPT
-    #service iptables save
-    :
+
+    # Configure Consul ports
+    iptables -D INPUT -p tcp --dport 8300 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 8301 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 8302 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 8500 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 8600 -j ACCEPT
+
+    service iptables save
+    #:
 }
 
 function uninstallFiles {
@@ -337,6 +344,7 @@ function installFiles {
     copyFileForceX "src/xapi/storage/libs/xcpng/scripts/sr.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/scripts/sr.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/scripts/volume.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/scripts/volume.py"
 
+    copyFileForceX "src/xapi/storage/libs/__init__.py" "/lib/python2.7/site-packages/xapi/storage/libs/__init__.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/__init__.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/__init__.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/data.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/data.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/datapath.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/datapath.py"
@@ -349,21 +357,23 @@ function installFiles {
     copyFileForceX "src/xapi/storage/libs/xcpng/utils.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/utils.py"
     copyFileForceX "src/xapi/storage/libs/xcpng/volume.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/volume.py"
 
-    ln -f -s "/usr/share/qemu/qmp/qmp.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/qmp.py"
+    if [[ -x /usr/share/qemu/qmp/qmp ]]; then
+      ln -f -s "/usr/share/qemu/qmp/qmp" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/qmp.py"
+    elif [[ -x /usr/share/qemu/qmp/qmp.py ]]; then
+      ln -f -s "/usr/share/qemu/qmp/qmp.py" "/lib/python2.7/site-packages/xapi/storage/libs/xcpng/qmp.py"
+    fi
 }
 
 function install {
     installDependencies
     installFiles
     configureFirewall
-    installQemubackService
 }
 
 function uninstall {
     unconfigureFirewall
     uninstallFiles
     uninstallDependencies
-    uninstallQemubackService
 }
 
 # Usage: confirmInstallation
