@@ -1,12 +1,13 @@
 import consul
 from tinydb.storages import Storage as _Storage_
 from tinydb.database import StorageProxy as _StorageProxy_
-from tinydb.database import DataProxy
+from tinydb.database import Table as _Table_
 
 
 class ConsulDict(object):
 
     def __init__(self, *args, **kwargs):
+        super(ConsulDict, self).__init__(self, *args, **kwargs)
         self.__consul = consul.Consul()
         self.__prefix = ''
         self.update(*args, **kwargs)
@@ -41,9 +42,9 @@ class ConsulDict(object):
                 if val is not None:
                     self.__consul.kv.delete(key=self.__prefix, recurse=True)
                 else:
-                    self.__consul.kv.delete(key="%s%s%s" % (self.__prefix, prefix, _key), recurse=True)
+                    self.__consul.kv.delete(key="%s%s" % (self.__prefix, _key), recurse=True)
             else:
-                 self.__consul.kv.delete(key="%s%s%s" % (self.__prefix, prefix, _key), recurse=True)
+                self.__consul.kv.delete(key=_key, recurse=True)
 
         if isinstance(value, dict) or isinstance(value, ConsulDict):
             if len(value) > 0:
@@ -99,7 +100,10 @@ class ConsulDict(object):
                 except:
                     val = value['Value']
                 finally:
-                    return val
+                    if val == None:
+                        return ""
+                    else:
+                        return val
 
     def __iter__(self):
         index, _keys = self.__consul.kv.get(key=self.__prefix, keys=True, separator='/')
@@ -334,22 +338,22 @@ class StorageProxy(_StorageProxy_):
         raw_data = self._storage.read()
 
         if self._table_name in raw_data:
-            return DataProxy(raw_data[self._table_name], raw_data)
-#            return raw_data[self._table_name]
+#            return DataProxy(raw_data[self._table_name], raw_data)
+            return raw_data[self._table_name]
         else:
             raw_data.update({self._table_name: {}})
-            return DataProxy(raw_data[self._table_name], raw_data)
-#            return raw_data[self._table_name]
+#            return DataProxy(raw_data[self._table_name], raw_data)
+            return raw_data[self._table_name]
 
     def write(self, data):
-        try:
-            # Try accessing the full data dict from the data proxy
-            raw_data = data.raw_data
-        except AttributeError:
-            # Not a data proxy, fall back to regular reading
-            raw_data = self._storage.read()
-
-        raw_data[self._table_name] = dict(data)
+#        try:
+#            # Try accessing the full data dict from the data proxy
+#            raw_data = data.raw_data
+#        except AttributeError:
+#            # Not a data proxy, fall back to regular reading
+#            raw_data = self._storage.read()
+#
+#        raw_data[self._table_name] = dict(data)
         pass
 
     def purge_table(self):
@@ -358,3 +362,13 @@ class StorageProxy(_StorageProxy_):
             del data[self._table_name]
         except KeyError:
             pass
+
+
+class Table(_Table_):
+
+    def all(self):
+        return self._read().values()
+
+    def __iter__(self):
+        for value in self._read().values():
+            yield value
