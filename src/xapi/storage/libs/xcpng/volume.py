@@ -3,7 +3,10 @@
 import xapi.storage.libs.xcpng.globalvars
 import sys
 import uuid
+import traceback
 from copy import deepcopy
+import platform
+import json
 
 from xapi.storage.libs.xcpng.utils import call, get_vdi_type_by_uri, get_vdi_datapath_by_uri, module_exists, \
                                           validate_and_round_vhd_size, fullSizeVHD, get_current_host_uuid, \
@@ -16,14 +19,14 @@ from xapi.storage.libs.xcpng.meta import MetadataHandler, merge, snap_merge_patt
 from xapi.storage.libs.xcpng.datapath import DATAPATHES
 from xapi.storage import log
 
-import platform
-
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import Volume_skeleton
     from xapi.storage.api.v4.volume import Activated_on_another_host
 elif platform.linux_distribution()[1] == '7.6.0' or \
-    platform.linux_distribution()[1] == '8.0.0' or \
-    platform.linux_distribution()[1] == '8.1.0':
+     platform.linux_distribution()[1] == '8.0.0' or \
+     platform.linux_distribution()[1] == '8.1.0' or \
+     platform.linux_distribution()[1] == '8.2.0' or \
+     platform.linux_distribution()[1] == '8.2.1':
     from xapi.storage.api.v5.volume import Volume_skeleton
     from xapi.storage.api.v5.volume import Activated_on_another_host
 
@@ -112,6 +115,7 @@ class Volume(object):
             volume_meta = self._create(dbg, sr, name, description, size, sharable, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.create: Failed to create volume: key %s: SR: %s" % (dbg, vdi_uuid, sr))
+            log.error(traceback.format_exc())
             try:
                 self.destroy(dbg, sr, vdi_uuid)
                 self.MetadataHandler.remove_vdi_meta(dbg, vdi_uri)
@@ -134,6 +138,7 @@ class Volume(object):
             self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.set: Failed to set volume param: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def unset(self, dbg, sr, key, k):
@@ -149,6 +154,7 @@ class Volume(object):
             self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.set: Failed to unset volume param: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _stat(self, dbg, sr, key, volume_meta):
@@ -169,6 +175,7 @@ class Volume(object):
             return self._stat(dbg, sr, key, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.stat: Failed to get volume stat: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _destroy(self, dbg, sr, key):
@@ -187,6 +194,7 @@ class Volume(object):
             self.MetadataHandler.remove_vdi_meta(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.destroy: Failed to destroy volume: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def set_description(self, dbg, sr, key, new_description):
@@ -203,6 +211,7 @@ class Volume(object):
             self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.set: Failed to set volume description: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def set_name(self, dbg, sr, key, new_name):
@@ -219,6 +228,7 @@ class Volume(object):
             self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.set: Failed to set volume name: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _resize(self, dbg, sr, key, new_size):
@@ -239,6 +249,7 @@ class Volume(object):
             self.MetadataHandler.update_vdi_meta(dbg, uri, volume_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.set: Failed to resize volume: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _clone(self, dbg, sr, key, mode, volume_meta):
@@ -270,6 +281,7 @@ class Volume(object):
             return self._clone(dbg, sr, key, mode, base_meta)
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.set: Failed to clone volume: key %s: SR: %s" % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _commit(self, dbg, sr, child, parent):
@@ -304,6 +316,7 @@ class Volume(object):
         except Exception as e:
             log.error("%s: xcpng.volume.Volume.set: Failed to coalesce volume with parent: key %s: SR: %s"
                       % (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
 
@@ -323,6 +336,7 @@ class RAWVolume(Volume):
         except Exception as e:
             log.error("%s: xcpng.volume.RAWVolume._create: Failed to create volume: key %s: SR: %s" %
                       (dbg, image_meta[VDI_UUID_TAG], sr))
+            log.error(traceback.format_exc())
             try:
                 self.VolOpsHendler.destroy(dbg, uri)
             except:
@@ -342,6 +356,7 @@ class RAWVolume(Volume):
         except Exception as e:
             log.error("%s: xcpng.volume.RAWVolume._resize: Failed to resize volume: key %s: SR: %s" %
                       (dbg, key, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _clone(self, dbg, sr, key, mode, base_meta):
@@ -360,7 +375,7 @@ class QCOW2Volume(RAWVolume):
         self.Datapathes[datapath].DatapathOpsHandler.map_vol(dbg, child, chained=None)
         self.Datapathes[datapath].DatapathOpsHandler.map_vol(dbg, parent, chained=None)
 
-        call(dbg, ['/usr/lib64/qemu-dp/bin/qemu-img',
+        call(dbg, ['/usr/lib64/qemu-dp-xcpng/bin/qemu-img',
                    'commit',
                    '-t', 'none'
                    '-b', self.Datapathes[datapath].DatapathOpsHandler.gen_vol_uri(dbg, parent),
@@ -415,14 +430,14 @@ class QCOW2Volume(RAWVolume):
                 self.Datapathes[datapath].DatapathOpsHandler.map_vol(dbg, clone_meta[URI_TAG][0], chained=None)
                 self.Datapathes[datapath].DatapathOpsHandler.map_vol(dbg, new_base_meta[URI_TAG][0], chained=None)
 
-                call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
+                call(dbg, ["/usr/lib64/qemu-dp-xcpng/bin/qemu-img",
                            "rebase",
                            "-u",
                            "-f", base_meta[TYPE_TAG],
                            "-b", self.Datapathes[datapath].DatapathOpsHandler.gen_vol_uri(dbg, base_meta[URI_TAG][0]),
                            self.Datapathes[datapath].DatapathOpsHandler.gen_vol_uri(dbg, new_base_meta[URI_TAG][0])])
 
-                call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
+                call(dbg, ["/usr/lib64/qemu-dp-xcpng/bin/qemu-img",
                            "rebase",
                            "-u",
                            "-f", clone_meta[TYPE_TAG],
@@ -468,7 +483,7 @@ class QCOW2Volume(RAWVolume):
 
                 self.Datapathes[datapath].DatapathOpsHandler.map_vol(dbg, clone_meta[URI_TAG][0], chained=None)
 
-                call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
+                call(dbg, ["/usr/lib64/qemu-dp-xcpng/bin/qemu-img",
                            "rebase",
                            "-u",
                            "-f", base_meta[TYPE_TAG],
@@ -493,6 +508,7 @@ class QCOW2Volume(RAWVolume):
         except Exception as e:
             log.error("%s: xcpng.volume.QCOW2Volume._clone: Failed to clone/snapshot volume: key %s: SR: %s" %
                       (dbg, key, sr))
+            log.error(traceback.format_exc())
             try:
                 if clone_uri_for_exception is not None:
                     self.Datapathes[datapath].DatapathOpsHandler.unmap_vol(dbg, clone_uri_for_exception)
@@ -528,7 +544,7 @@ class QCOW2Volume(RAWVolume):
 
             self.Datapathes[datapath].DatapathOpsHandler.map_vol(dbg, uri)
 
-            call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
+            call(dbg, ["/usr/lib64/qemu-dp-xcpng/bin/qemu-img",
                        "create",
                        "-f", image_meta[TYPE_TAG],
                        self.Datapathes[datapath].DatapathOpsHandler.gen_vol_path(dbg, uri),
@@ -540,6 +556,7 @@ class QCOW2Volume(RAWVolume):
         except Exception as e:
             log.error("%s: xcpng.volume.QCOW2Volume._create: Failed to create volume: key %s: SR: %s" %
                       (dbg, image_meta[VDI_UUID_TAG], sr))
+            log.error(traceback.format_exc())
             try:
                 self.Datapathes[datapath].DatapathOpsHandler.unmap_vol(dbg, uri)
             except:
@@ -558,7 +575,7 @@ class QCOW2Volume(RAWVolume):
 
             self.Datapathes[datapath].DatapathOpsHandler.map_vol(dbg, uri)
 
-            call(dbg, ["/usr/lib64/qemu-dp/bin/qemu-img",
+            call(dbg, ["/usr/lib64/qemu-dp-xcpng/bin/qemu-img",
                        "resize",
                        self.Datapathes[datapath].DatapathOpsHandler.gen_vol_path(dbg, uri),
                        str(new_size)])
@@ -567,6 +584,7 @@ class QCOW2Volume(RAWVolume):
         except Exception as e:
             log.error("%s: xcpng.volume.QCOW2Volume._resize: Failed to resize volume: key %s: SR: %s" %
                       (dbg, key, sr))
+            log.error(traceback.format_exc())
             try:
                 self.Datapathes[datapath].DatapathOpsHandler.unmap_vol(dbg, uri)
             except:

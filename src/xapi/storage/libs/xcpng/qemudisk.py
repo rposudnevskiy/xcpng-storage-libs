@@ -5,13 +5,14 @@ import os
 import re
 import platform
 import time
+import traceback
 
 from xapi.storage import log
 from xapi.storage.libs.xcpng import utils, qmp
 
-QEMU_DP = "/usr/lib64/qemu-dp/bin/qemu-dp"
+QEMU_DP = "/usr/lib64/qemu-dp-xcpng/bin/qemu-dp"
 NBD_CLIENT = "/usr/sbin/nbd-client"
-QEMU_DP_SOCKET_DIR = utils.VAR_RUN_PREFIX + "/qemu-dp"
+QEMU_DP_SOCKET_DIR = utils.VAR_RUN_PREFIX + "/qemu-dp-xcpng"
 
 IMAGE_TYPES = ['qcow2', 'qcow', 'vhdx', 'vpc', 'raw']
 LEAF_NODE_NAME = 'qemu_node'
@@ -44,6 +45,7 @@ def create(dbg, qemudisk, uri, img_qemu_uri):
     except Exception as e:
         log.error("%s: xcpng.qemudisk.create: Failed to create qemu_dp instance: uri %s" %
                   (dbg, uri))
+        log.error(traceback.format_exc())
         try:
             log_fd.close()
         except:
@@ -129,6 +131,7 @@ class Qemudisk(object):
             _qmp_.close()
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.quit: Failed to destroy qemu_dp instance: pid %s" % (dbg, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:
@@ -158,6 +161,7 @@ class Qemudisk(object):
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.open: Failed to open image in qemu_dp instance: uuid: %s pid %s" %
                       (dbg, self.vdi_uuid, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:
@@ -184,7 +188,9 @@ class Qemudisk(object):
                     log.debug("%s: xcpng.qemudisk.Qemudisk.close: There was no xenstore setup" % dbg)
             elif platform.linux_distribution()[1] == '7.6.0' or \
                 platform.linux_distribution()[1] == '8.0.0' or \
-                platform.linux_distribution()[1] == '8.1.0':
+                platform.linux_distribution()[1] == '8.1.0' or \
+                platform.linux_distribution()[1] == '8.2.0' or \
+                platform.linux_distribution()[1] == '8.2.1':
                 path = "{}/{}".format(utils.VAR_RUN_PREFIX, self.vdi_uuid)
                 try:
                     with open(path, 'r') as f:
@@ -207,6 +213,7 @@ class Qemudisk(object):
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.close: Failed to close image in qemu_dp instance: uuid: %s pid %s" %
                       (dbg, self.vdi_uuid, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:
@@ -243,6 +250,7 @@ class Qemudisk(object):
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.snap: Failed to set backing file for image in qemu_dp instance: "
                       "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:
@@ -263,6 +271,7 @@ class Qemudisk(object):
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.suspend: Failed to suspend IO for image in qemu_dp instance: "
                       "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:
@@ -283,6 +292,7 @@ class Qemudisk(object):
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.resume: Failed to resume IO for image in qemu_dp instance: "
                       "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:
@@ -315,6 +325,7 @@ class Qemudisk(object):
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.relink: Failed to relink chain for image in qemu_dp instance: "
                       "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:
@@ -350,6 +361,7 @@ class Qemudisk(object):
         except Exception as e:
             log.error("%s: xcpng.qemudisk.Qemudisk.commit: Failed to commit changes for image in qemu_dp instance: "
                       "uuid: %s pid %s" % (dbg, self.vdi_uuid, self.pid))
+            log.error(traceback.format_exc())
             try:
                 _qmp_.close()
             except:

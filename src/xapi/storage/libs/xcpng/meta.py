@@ -2,10 +2,12 @@
 
 import xapi.storage.libs.xcpng.globalvars
 import atexit
+import traceback
 
 from tinydb import TinyDB, Query, where
 from tinydb.operations import delete
 from tinydb.storages import MemoryStorage as Storage
+from tinydb.database import Table
 from tinydb.database import StorageProxy
 from json import dumps, loads
 
@@ -128,17 +130,25 @@ if plugin_specific_metadb_ops:
 else:
     _MetaDBOperations_ = MetaDBOperations
 
+#plugin_specific_metadb_cs = module_exists("xapi.storage.libs.xcpng.cluster_stack.%s.tinydb_storage"
+#                                          % xapi.storage.libs.xcpng.globalvars.cluster_stack)
 plugin_specific_metadb_cs = module_exists("xapi.storage.libs.xcpng.cluster_stack.%s.tinydb_storage"
-                                          % xapi.storage.libs.xcpng.globalvars.cluster_stack)
+                                          % "consul")
+
 if plugin_specific_metadb_cs:
     _Storage_ = getattr(plugin_specific_metadb_cs, 'Storage')
     _StorageProxy_ = getattr(plugin_specific_metadb_cs, 'StorageProxy')
+    _Table_ = getattr(plugin_specific_metadb_cs, 'Table')
 else:
     _Storage_ = Storage
     _StorageProxy_ = StorageProxy
+    _Table_ = Table
 
+#plugin_specific_metadb_lk = module_exists("xapi.storage.libs.xcpng.cluster_stack.%s.locks"
+#                                          % xapi.storage.libs.xcpng.globalvars.cluster_stack)
 plugin_specific_metadb_lk = module_exists("xapi.storage.libs.xcpng.cluster_stack.%s.locks"
-                                          % xapi.storage.libs.xcpng.globalvars.cluster_stack)
+                                          % "consul")
+
 if plugin_specific_metadb_lk:
     _LocksOpsMgr_ = getattr(plugin_specific_metadb_lk, 'LocksOpsMgr')
 else:
@@ -164,7 +174,7 @@ class MetadataHandler(object):
 
     def __init__(self):
         log.debug("xcpng.meta.MetadataHandler.__init___")
-        self.db = TinyDB('srs_meta', storage=_Storage_, storage_proxy_class=_StorageProxy_, default_table='sr')
+        self.db = TinyDB('srs_meta', storage=_Storage_, storage_proxy_class=_StorageProxy_, table_class=_Table_, default_table='sr')
         self.__loaded = False
         self.__locked = False
         self.__updated = False
@@ -188,7 +198,9 @@ class MetadataHandler(object):
         try:
             self.MetaDBOpsHandler.create(dbg, uri, '{"sr": {}, "vdis": {}}')
         except Exception as e:
-            log.error("%s: xcpng.meta.MetadataHandler.create: Failed to create metadata database: uri: %s " % (dbg, uri))
+            log.error("%s: xcpng.meta.MetadataHandler.create: Failed to create metadata database: uri: %s " %
+                      (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def destroy(self, dbg, uri):
@@ -196,7 +208,9 @@ class MetadataHandler(object):
         try:
             self.MetaDBOpsHandler.destroy(dbg, uri)
         except Exception as e:
-            log.error("%s: xcpng.meta.MetadataHandler.destroy: Failed to destroy metadata database: uri: %s " % (dbg, uri))
+            log.error("%s: xcpng.meta.MetadataHandler.destroy: Failed to destroy metadata database: uri: %s " %
+                      (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def __load(self, dbg, uri):
@@ -212,6 +226,7 @@ class MetadataHandler(object):
                 self.__loaded = True
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.load: Failed to load metadata" % dbg)
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def load(self, dbg, uri):
@@ -225,6 +240,7 @@ class MetadataHandler(object):
             self.__updated = False
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.__dump: Failed to dump metadata" % dbg)
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def dump(self, dbg, uri):
@@ -236,6 +252,7 @@ class MetadataHandler(object):
             self.LocksOpshandler.lock(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.lock: Failed to lock metadata DB" % dbg)
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def unlock(self, dbg, uri):
@@ -244,6 +261,7 @@ class MetadataHandler(object):
             self.LocksOpshandler.unlock(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.unlock: Failed to unlock metadata DB" % dbg)
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def update_vdi_meta(self, dbg, uri, meta):
@@ -302,6 +320,7 @@ class MetadataHandler(object):
             self.__updated = True
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler._update: Failed to update metadata" % dbg)
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def remove_vdi_meta(self, dbg, uri):
@@ -335,6 +354,7 @@ class MetadataHandler(object):
             self.__updated = True
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler._remove: Failed to remove metadata" % dbg)
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def get_vdi_meta(self, dbg, uri):
@@ -385,6 +405,7 @@ class MetadataHandler(object):
             return meta
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.__get_meta: Failed to get metadata" % dbg)
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def find_vdi_children(self, dbg, uri):
@@ -401,6 +422,7 @@ class MetadataHandler(object):
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.find_vdi_children: Failed to find "
                       "children for uri: %s " % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def find_coalesceable_pairs(self, dbg, sr):
@@ -430,4 +452,5 @@ class MetadataHandler(object):
         except Exception as e:
             log.error("%s: xcpng.meta.MetadataHandler.find_coalesceable_pairs: Failed to find "
                       "coalesceable pairs for sr: %s " % (dbg, sr))
+            log.error(traceback.format_exc())
             raise Exception(e)

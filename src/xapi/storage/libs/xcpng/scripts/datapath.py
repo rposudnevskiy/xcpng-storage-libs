@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Datapath for ZFS ZVol using QEMU qdisk
+Datapath for RBD using QEMU qdisk
 """
 import xapi.storage.libs.xcpng.globalvars
 import os
@@ -13,8 +13,10 @@ from xapi.storage import log
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.datapath import Datapath_commandline, Unimplemented
 elif platform.linux_distribution()[1] == '7.6.0' or \
-    platform.linux_distribution()[1] == '8.0.0' or \
-    platform.linux_distribution()[1] == '8.1.0':
+     platform.linux_distribution()[1] == '8.0.0' or \
+     platform.linux_distribution()[1] == '8.1.0' or \
+     platform.linux_distribution()[1] == '8.2.0' or \
+     platform.linux_distribution()[1] == '8.2.1':
     from xapi.storage.api.v5.datapath import Datapath_commandline, Unimplemented
 
 xapi.storage.libs.xcpng.globalvars.plugin_type = \
@@ -22,7 +24,8 @@ xapi.storage.libs.xcpng.globalvars.plugin_type = \
 
 with open("%s/plugin.json" % os.path.dirname(os.path.abspath(__file__))) as fd:
     plugin = json.load(fd)
-    xapi.storage.libs.xcpng.globalvars.cluster_stack = plugin['required_cluster_stack'][0]
+    if len(plugin['required_cluster_stack']) > 0:
+        xapi.storage.libs.xcpng.globalvars.cluster_stack = plugin['required_cluster_stack'][0]
 
 from xapi.storage.libs.xcpng.datapath import Implementation, DATAPATHES
 

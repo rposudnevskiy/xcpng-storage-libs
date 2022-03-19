@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import traceback
 import xapi.storage.libs.xcpng.globalvars
 import platform
 from copy import deepcopy
@@ -14,8 +15,10 @@ from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_known_srs, get_sr_
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.volume import SR_skeleton
 elif platform.linux_distribution()[1] == '7.6.0' or \
-    platform.linux_distribution()[1] == '8.0.0' or \
-    platform.linux_distribution()[1] == '8.1.0':
+     platform.linux_distribution()[1] == '8.0.0' or \
+     platform.linux_distribution()[1] == '8.1.0' or \
+     platform.linux_distribution()[1] == '8.2.0' or \
+     platform.linux_distribution()[1] == '8.2.1':
     from xapi.storage.api.v5.volume import SR_skeleton
 
 class SROperations(object):
@@ -192,6 +195,7 @@ class SR(object):
                         self.SROpsHendler.sr_export(dbg, _sr_)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.probe: Failed to probe SRs for configuration: %s" % (dbg, configuration))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
         return result
@@ -233,6 +237,7 @@ class SR(object):
             self.MetadataHandler.dump(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.create: Failed to create SR - sr_uuid: %s" % (dbg, sr_uuid))
+            log.error(traceback.format_exc())
             try:
                 self.SROpsHendler.destroy(dbg, uri)
             except:
@@ -244,6 +249,7 @@ class SR(object):
         except Exception as e:
             log.error("%s: xcpng.sr.SR.create: Created but failed to export SR after creation - sr_uuid: %s"
                       "Please check and export SR manually before attaching the SR" % (dbg, sr_uuid))
+            log.error(traceback.format_exc())
 
         return configuration
 
@@ -254,7 +260,9 @@ class SR(object):
             self.SROpsHendler.destroy(dbg, uri)
             call(dbg, ['rm', '-rf', "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))])
         except Exception as e:
-            log.error("%s: xcpng.sr.SR.destroy: Failed to destroy SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
+            log.error("%s: xcpng.sr.SR.destroy: Failed to destroy SR - sr_uuid: %s" %
+                      (dbg, get_sr_uuid_by_uri(dbg, uri)))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def attach(self, dbg, configuration):
@@ -279,6 +287,7 @@ class SR(object):
             self.SROpsHendler.sr_import(dbg, uri, configuration)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.attach: Failed to attach SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
+            log.error(traceback.format_exc())
             try:
                 self.SROpsHendler.sr_export(dbg, uri)
                 call(dbg, ['rm', '-rf', configuration['mountpoint']])
@@ -295,6 +304,7 @@ class SR(object):
             call(dbg, ['rm', '-rf', "%s/%s" % (SR_PATH_PREFIX, get_sr_uuid_by_uri(dbg, uri))])
         except Exception as e:
             log.error("%s: xcpng.sr.SR.detach: Failed to detach SR - sr_uuid: %s" % (dbg, get_sr_uuid_by_uri(dbg, uri)))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def stat(self, dbg, uri):
@@ -310,6 +320,7 @@ class SR(object):
             log.debug("%s: xcpng.sr.SR.stat total_space = %Ld free_space = %Ld" % (dbg, tsize, fsize))
         except Exception as e:
             log.error("%s: xcpng.sr.SR.stat: Failed to get stat for SR: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
         overprovision = 0
@@ -343,6 +354,7 @@ class SR(object):
             self.MetadataHandler.update_sr_meta(dbg, uri, sr_meta)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.set_name: Failed to set name for SR: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def set_description(self, dbg, uri, new_description):
@@ -357,6 +369,7 @@ class SR(object):
             self.MetadataHandler.update_sr_meta(dbg, uri, sr_meta)
         except Exception as e:
             log.error("%s: xcpng.sr.SR.set_description: Failed to set description for SR: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def ls(self, dbg, uri):
@@ -388,6 +401,7 @@ class SR(object):
             return results
         except Exception as e:
             log.error("%s: xcpng.sr.SR.ls: Failed to list of vdis for SR: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
 

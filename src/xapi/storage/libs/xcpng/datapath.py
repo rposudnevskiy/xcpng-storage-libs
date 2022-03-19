@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import traceback
 import xapi.storage.libs.xcpng.globalvars
 
 from os.path import exists
@@ -19,7 +20,11 @@ from xapi.storage.libs.xcpng.utils import SR_PATH_PREFIX, get_current_host_uuid,
 import platform
 if platform.linux_distribution()[1] == '7.5.0':
     from xapi.storage.api.v4.datapath import Datapath_skeleton
-elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
+elif platform.linux_distribution()[1] == '7.6.0' or \
+     platform.linux_distribution()[1] == '8.0.0' or \
+     platform.linux_distribution()[1] == '8.1.0' or \
+     platform.linux_distribution()[1] == '8.2.0' or \
+     platform.linux_distribution()[1] == '8.2.1':
     from xapi.storage.api.v5.datapath import Datapath_skeleton
 
 
@@ -49,17 +54,16 @@ class DatapathOperations(object):
                         self.map_vol(dbg, volume_meta[PARENT_URI_TAG][0], chained)
 
                 if REF_COUNT_TAG in volume_meta:
-                    new_meta = {}
-                    new_meta[REF_COUNT_TAG] = volume_meta[REF_COUNT_TAG] + 1
+                    new_meta = {REF_COUNT_TAG: volume_meta[REF_COUNT_TAG] + 1}
                     self.MetadataHandler.update_vdi_meta(dbg, uri, new_meta)
                 else:
-                    new_meta = {}
-                    new_meta[REF_COUNT_TAG] = 1
+                    new_meta = {REF_COUNT_TAG: 1}
                     call(dbg, ['ln', '-s', _blkdev_, self.gen_vol_path(dbg, uri)])
                     self.MetadataHandler.update_vdi_meta(dbg, uri, new_meta)
             except Exception as e:
                 log.error("%s: xcpng.datapath.DatapathOperations.map_vol: Failed to map volume: uri: %s device: %s" %
                           (dbg, uri, _blkdev_))
+                log.error(traceback.format_exc())
                 raise Exception(e)
 
     def unmap_vol(self, dbg, uri, chained=False):
@@ -82,7 +86,9 @@ class DatapathOperations(object):
                     if PARENT_URI_TAG in volume_meta:
                         self.unmap_vol(dbg, volume_meta[PARENT_URI_TAG][0], chained)
             except Exception as e:
-                log.error("%s: xcpng.datapath.DatapathOperations.unmap_vol: Failed to unmap volume: uri: %s" % (dbg, uri))
+                log.error("%s: xcpng.datapath.DatapathOperations.unmap_vol: Failed to unmap volume: uri: %s" %
+                          (dbg, uri))
+                log.error(traceback.format_exc())
                 raise Exception(e)
 
 
@@ -110,6 +116,7 @@ class Datapath(object):
             self._relink(dbg, uri, child, parent, domain)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.relink: Failed to relink: uri: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _commit(self, dbg, uri, child, parent, domain):
@@ -123,6 +130,7 @@ class Datapath(object):
             self._commit(dbg, uri, child, parent, domain)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.commit: Failed to commit: uri: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _open(self, dbg, uri, persistent):
@@ -163,6 +171,7 @@ class Datapath(object):
             self._open(dbg, uri, persistent)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.open: Failed to open datapath for volume: uri: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _close(self, dbg, uri):
@@ -190,6 +199,7 @@ class Datapath(object):
             self._close(dbg, uri)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.close: Failed to close datapath for volume: uri: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _attach(self, dbg, uri, domain):
@@ -208,12 +218,17 @@ class Datapath(object):
                     'domain_uuid': '0',
                     'implementation': [protocol, params]
                 }
-            elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
+            elif platform.linux_distribution()[1] == '7.6.0' or \
+                 platform.linux_distribution()[1] == '8.0.0' or \
+                 platform.linux_distribution()[1] == '8.1.0' or \
+                 platform.linux_distribution()[1] == '8.2.0' or \
+                 platform.linux_distribution()[1] == '8.2.1':
                 return {
                     'implementations': self._attach(dbg, uri, domain)
                 }
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.attach: Failed to attach datapath for volume: uri: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             try:
                 self.DatapathOpsHandler.unmap_vol(dbg, uri, chained=True)
             except:
@@ -232,6 +247,7 @@ class Datapath(object):
             self._detach(dbg, uri, domain)
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.detach: Failed to detach datapath for volume: uri: %s" % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _activate(self, dbg, uri, domain):
@@ -254,6 +270,7 @@ class Datapath(object):
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.activate: Failed to activate datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             try:
                 self._deactivate(dbg, uri, domain)
             except:
@@ -278,6 +295,7 @@ class Datapath(object):
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.deactivate: Failed to deactivate datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _suspend(self, dbg, uri, domain):
@@ -291,6 +309,7 @@ class Datapath(object):
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.suspend: Failed to suspend datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _resume(self, dbg, uri, domain):
@@ -304,6 +323,7 @@ class Datapath(object):
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.resume: Failed to resume datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _snapshot(self, dbg, base_uri, snap_uri, domain):
@@ -317,6 +337,7 @@ class Datapath(object):
         except Exception as e:
             log.error("%s: xcpng.datapath.Datapath.snapshot: Failed to set backing file for live volume: uri: %s" %
                       (dbg, snap_uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
 
@@ -346,6 +367,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._load_qemu_dp: Failed to load qemu_dp for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _commit(self, dbg, uri, child, parent, domain):
@@ -361,6 +383,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._commit: Failed to commit changes for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _relink(self, dbg, uri, child, parent, domain):
@@ -376,6 +399,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._relink: Failed to relink child for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _open(self, dbg, uri, persistent):
@@ -411,7 +435,11 @@ class QdiskDatapath(Datapath):
 
             if platform.linux_distribution()[1] == '7.5.0':
                 return (protocol, qemu_dp.params)
-            elif platform.linux_distribution()[1] == '7.6.0' or platform.linux_distribution()[1] == '8.0.0':
+            elif platform.linux_distribution()[1] == '7.6.0' or \
+                 platform.linux_distribution()[1] == '8.0.0' or \
+                 platform.linux_distribution()[1] == '8.1.0' or \
+                 platform.linux_distribution()[1] == '8.2.0' or \
+                 platform.linux_distribution()[1] == '8.2.1' :
                 implementations = [
                     [
                         'XenDisk',
@@ -424,8 +452,7 @@ class QdiskDatapath(Datapath):
                     [
                         'Nbd',
                         {
-                            'uri': 'nbd:unix:{}:exportname={}'
-                                .format(qemu_dp.nbd_sock, LEAF_NODE_NAME)
+                            'uri': 'nbd:unix:{}:exportname={}'.format(qemu_dp.nbd_sock, LEAF_NODE_NAME)
                         }
                     ]
                 ]
@@ -433,6 +460,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._attach: Failed to attach datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             try:
                 qemu_dp.quit(dbg)
                 volume_meta = {
@@ -467,6 +495,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._detach: Failed to detach datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _activate(self, dbg, uri, domain):
@@ -478,6 +507,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._activate: Failed to activate datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _deactivate(self, dbg, uri, domain):
@@ -489,6 +519,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._deactivate: Failed to deactivate datapath for volume: uri: %s"
                       % (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _suspend(self, dbg, uri, domain):
@@ -500,6 +531,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._suspend: Failed to suspend datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _resume(self, dbg, uri, domain):
@@ -511,6 +543,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._resume: Failed to resume datapath for volume: uri: %s" %
                       (dbg, uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
     def _snapshot(self, dbg, base_uri, snap_uri, domain):
@@ -522,6 +555,7 @@ class QdiskDatapath(Datapath):
         except Exception as e:
             log.error("%s: xcpng.datapath.QdiskDatapath._snapshot: Failed to set backing file for live volume: uri: %s"
                       % (dbg, snap_uri))
+            log.error(traceback.format_exc())
             raise Exception(e)
 
 DATAPATHES = {'qdisk': QdiskDatapath}
