@@ -55,7 +55,7 @@ function installQemudp {
 
     wget -q -nd -P /tmp -r -R 'index.html*' -e robots=off \
       --accept-regex 'qemu-dp-xcpng-[[:digit:].]*-[[:digit:].]*.x86_64.rpm' \
-      https://github.com/rposudnevskiy/qemu-dp/releases/tag/qemu-dp-xcpng-`cut -d" " -f3 /etc/redhat-release | cut -c1-3`/
+      https://github.com/rposudnevskiy/qemu-dp/releases/tag/xcpng-testing-`cut -d" " -f3 /etc/redhat-release | cut -c1-3`/
     yum install --enablerepo="base,extras,epel" -q -y /tmp/qemu-dp-xcpng-*.rpm
     rm -f /tmp/qemu-dp-xcpng-*.rpm
 }
