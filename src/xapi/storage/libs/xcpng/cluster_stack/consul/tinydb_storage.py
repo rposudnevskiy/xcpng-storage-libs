@@ -4,10 +4,10 @@ from tinydb.database import StorageProxy as _StorageProxy_
 from tinydb.database import Table as _Table_
 
 
-class ConsulDict(object):
+class ConsulDict(dict):
 
     def __init__(self, *args, **kwargs):
-        super(ConsulDict, self).__init__(self, *args, **kwargs)
+        super(ConsulDict, self).__init__(*args, **kwargs)
         self.__consul = consul.Consul()
         self.__prefix = ''
         self.update(*args, **kwargs)
