@@ -233,7 +233,7 @@ function installConsul {
     chmod 640 /etc/consul.d/consul.hcl
 
     copyFileForce "src/consul/consul_startup.sh" "/usr/local/bin/consul_startup.sh"
-    chmod 640 /usr/local/bin/consul_startup.sh
+    chmod 755 /usr/local/bin/consul_startup.sh
 
     echo "  Starting Consul Service"
     systemctl enable consul
