@@ -23,13 +23,13 @@ function copyFileForce {
 }
 
 function installNbd {
-    echo "Install NBD Client"
-    yum install --enablerepo="epel" -y nbd
+    echo "  Installing NBD Client"
+    yum install --enablerepo="base,extras,epel" -q -y nbd
 }
 
 function uninstallNbd {
-    echo "Uninstall NBD Client"
-    yum erase -y nbd
+    echo "  Uninstall NBD Client"
+    yum erase -q -y nbd
 }
 
 function uninstallQemubackService {
@@ -57,7 +57,7 @@ function installQemudp {
       --accept-regex 'qemu-dp-xcpng-[[:digit:].]*-[[:digit:].]*.x86_64.rpm' \
       https://github.com/rposudnevskiy/qemu-dp/releases/tag/qemu-dp-xcpng-`cut -d" " -f3 /etc/redhat-release | cut -c1-3`/ \
       -O /tmp/qemu-dp-xcpng.x86_64.rpm
-    yum install -y /tmp/qemu-dp-xcpng.x86_64.rpm
+    yum install -q -y /tmp/qemu-dp-xcpng.x86_64.rpm
     rm -f /tmp/qemu-dp-xcpng.x86_64.rpm
 }
 
