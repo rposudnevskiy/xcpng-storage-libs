@@ -280,11 +280,11 @@ function configureFirewall {
     #iptables -A INPUT -m multiport -p tcp --dports 6800:7300 -j ACCEPT
 
     # Configure Consul ports
-    iptables -A INPUT -p tcp --dport 8300 -j ACCEPT
-    iptables -A INPUT -p tcp --dport 8301 -j ACCEPT
-    iptables -A INPUT -p tcp --dport 8302 -j ACCEPT
-    iptables -A INPUT -p tcp --dport 8500 -j ACCEPT
-    iptables -A INPUT -p tcp --dport 8600 -j ACCEPT
+    iptables -I RH-Firewall-1-INPUT 11 -p tcp -m conntrack --ctstate NEW -m tcp --dport 8300 -j ACCEPT
+    iptables -I RH-Firewall-1-INPUT 12 -p tcp -m conntrack --ctstate NEW -m tcp --dport 8301 -j ACCEPT
+    iptables -I RH-Firewall-1-INPUT 13 -p tcp -m conntrack --ctstate NEW -m tcp --dport 8302 -j ACCEPT
+    iptables -I RH-Firewall-1-INPUT 14 -p tcp -m conntrack --ctstate NEW -m tcp --dport 8500 -j ACCEPT
+    iptables -I RH-Firewall-1-INPUT 15 -p tcp -m conntrack --ctstate NEW -m tcp --dport 8600 -j ACCEPT
 
     service iptables save
     #:
@@ -295,11 +295,11 @@ function unconfigureFirewall {
     #iptables -D INPUT -m multiport -p tcp --dports 6800:7300 -j ACCEPT
 
     # Configure Consul ports
-    iptables -D INPUT -p tcp --dport 8300 -j ACCEPT
-    iptables -D INPUT -p tcp --dport 8301 -j ACCEPT
-    iptables -D INPUT -p tcp --dport 8302 -j ACCEPT
-    iptables -D INPUT -p tcp --dport 8500 -j ACCEPT
-    iptables -D INPUT -p tcp --dport 8600 -j ACCEPT
+    iptables -D RH-Firewall-1-INPUT -p tcp -m conntrack --ctstate NEW -m tcp --dport 8300 -j ACCEPT
+    iptables -D RH-Firewall-1-INPUT -p tcp -m conntrack --ctstate NEW -m tcp --dport 8301 -j ACCEPT
+    iptables -D RH-Firewall-1-INPUT -p tcp -m conntrack --ctstate NEW -m tcp --dport 8302 -j ACCEPT
+    iptables -D RH-Firewall-1-INPUT -p tcp -m conntrack --ctstate NEW -m tcp --dport 8500 -j ACCEPT
+    iptables -D RH-Firewall-1-INPUT -p tcp -m conntrack --ctstate NEW -m tcp --dport 8600 -j ACCEPT
 
     service iptables save
     #:
